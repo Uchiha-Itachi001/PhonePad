@@ -7,7 +7,7 @@ pub mod traits;
 pub mod windows;
 
 pub use dummy::DummyInjector;
-pub use traits::{InputInjector, MediaKey, MouseButton, NumpadKey};
+pub use traits::{InputInjector, MediaKey, MouseButton, NumpadKey, WHEEL_DELTA};
 
 #[cfg(windows)]
 pub use windows::WindowsInjector;

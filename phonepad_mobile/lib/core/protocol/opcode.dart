@@ -21,6 +21,9 @@ abstract class Opcode {
   /// Middle mouse click (0x07)
   static const int middleClick = 0x07;
 
+  /// 2-Finger pinch zoom delta (0x08)
+  static const int zoom = 0x08;
+
   /// Sleep / Standby idle command (0x10)
   static const int sleepStandby = 0x10;
 

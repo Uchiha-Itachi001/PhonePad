@@ -48,6 +48,17 @@ impl GestureFilter {
         }
     }
 
+    /// Suppresses floating-point micro-jitter when finger is nearly stationary.
+    #[inline]
+    pub fn apply_deadzone_f32(&self, fx: f32, fy: f32) -> (f32, f32) {
+        let mag = (fx * fx + fy * fy).sqrt();
+        if mag < self.config.deadzone_threshold {
+            (0.0, 0.0)
+        } else {
+            (fx, fy)
+        }
+    }
+
     /// Converts raw continuous 2-finger scroll deltas into OS wheel click increments.
     pub fn process_scroll(&mut self, raw_dx: i16, raw_dy: i16) -> (i32, i32) {
         let direction_factor = if self.config.natural_scroll { 1.0 } else { -1.0 };
@@ -62,6 +73,23 @@ impl GestureFilter {
         self.scroll_accum_y -= notches_y as f32 * self.config.scroll_units_per_notch;
 
         (notches_x, notches_y)
+    }
+
+    /// Converts continuous 2-finger scroll deltas into high-resolution OS wheel increments.
+    pub fn process_smooth_scroll(&mut self, fx: f32, fy: f32) -> (i32, i32) {
+        let direction_factor = if self.config.natural_scroll { 1.0 } else { -1.0 };
+        let scale = (crate::input::WHEEL_DELTA as f32) / self.config.scroll_units_per_notch;
+
+        let target_x = (fx * direction_factor * scale) + self.scroll_accum_x;
+        let target_y = (fy * direction_factor * scale) + self.scroll_accum_y;
+
+        let wheel_x = target_x.round() as i32;
+        let wheel_y = target_y.round() as i32;
+
+        self.scroll_accum_x = target_x - (wheel_x as f32);
+        self.scroll_accum_y = target_y - (wheel_y as f32);
+
+        (wheel_x, wheel_y)
     }
 
     /// Resets scroll accumulators when fingers are lifted.
@@ -111,4 +139,24 @@ mod tests {
         let (sx, sy) = filter.process_scroll(0, 16);
         assert_eq!((sx, sy), (0, -1));
     }
+
+    #[test]
+    fn test_deadzone_f32() {
+        let filter = GestureFilter::default();
+        assert_eq!(filter.apply_deadzone_f32(0.1, 0.2), (0.0, 0.0));
+        assert_eq!(filter.apply_deadzone_f32(1.0, 0.0), (1.0, 0.0));
+    }
+
+    #[test]
+    fn test_process_smooth_scroll_continuous_increments() {
+        let mut filter = GestureFilter::default();
+        // 1.0 unit delta -> 7.5 wheel units -> rounds to 8
+        let (wx1, wy1) = filter.process_smooth_scroll(0.0, 1.0);
+        assert_eq!((wx1, wy1), (0, 8));
+
+        // Next 1.0 unit delta -> 7.5 - 0.5 remainder = 7.0 -> rounds to 7
+        let (wx2, wy2) = filter.process_smooth_scroll(0.0, 1.0);
+        assert_eq!((wx2, wy2), (0, 7));
+    }
 }
+

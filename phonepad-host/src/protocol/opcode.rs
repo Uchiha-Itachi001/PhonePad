@@ -16,6 +16,8 @@ pub enum Opcode {
     DragEnd,
     /// Middle mouse click (0x07)
     MiddleClick,
+    /// 2-Finger pinch zoom delta (0x08)
+    Zoom,
     /// Sleep / Standby idle command (0x10)
     SleepStandby,
     /// Virtual Numpad keystroke event (0x20)
@@ -40,6 +42,7 @@ impl From<u8> for Opcode {
             0x05 => Opcode::DragStart,
             0x06 => Opcode::DragEnd,
             0x07 => Opcode::MiddleClick,
+            0x08 => Opcode::Zoom,
             0x10 => Opcode::SleepStandby,
             0x20 => Opcode::Numpad,
             0x21 => Opcode::Media,
@@ -60,6 +63,7 @@ impl From<Opcode> for u8 {
             Opcode::DragStart => 0x05,
             Opcode::DragEnd => 0x06,
             Opcode::MiddleClick => 0x07,
+            Opcode::Zoom => 0x08,
             Opcode::SleepStandby => 0x10,
             Opcode::Numpad => 0x20,
             Opcode::Media => 0x21,

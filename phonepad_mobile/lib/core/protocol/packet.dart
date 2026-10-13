@@ -3,6 +3,9 @@ import 'dart:typed_data';
 /// Fixed 6-byte little-endian PhonePad touch packet.
 class PhonePadPacket {
   static const int packetSize = 6;
+  static const int flagTouchActive = 0x01;
+  static const int flagHaptic = 0x08;
+  static const int flagHighRes = 0x10;
 
   final int opcode;
   final int dx;
@@ -16,16 +19,19 @@ class PhonePadPacket {
     this.flags = 0,
   });
 
-  /// Serializes into a 6-byte binary frame matching Rust host layout.
-  Uint8List toBytes() {
-    final bytes = Uint8List(packetSize);
-    final byteData = ByteData.sublistView(bytes);
-
+  /// Writes into an existing pre-allocated 6-byte buffer (zero allocation).
+  void writeTo(Uint8List buffer) {
+    final byteData = ByteData.sublistView(buffer);
     byteData.setUint8(0, opcode);
     byteData.setInt16(1, dx, Endian.little);
     byteData.setInt16(3, dy, Endian.little);
     byteData.setUint8(5, flags);
+  }
 
+  /// Serializes into a 6-byte binary frame matching Rust host layout.
+  Uint8List toBytes() {
+    final bytes = Uint8List(packetSize);
+    writeTo(bytes);
     return bytes;
   }
 
@@ -51,4 +57,7 @@ class PhonePadPacket {
 
   /// Bit 3: Tactile haptic feedback requested.
   bool get hapticRequested => (flags & 0x08) != 0;
+
+  /// Bit 4: High-resolution 8x sub-pixel delta encoding (Q3 fixed point).
+  bool get isHighRes => (flags & flagHighRes) != 0;
 }

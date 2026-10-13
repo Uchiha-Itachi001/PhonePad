@@ -15,10 +15,10 @@ pub struct BallisticsConfig {
 impl Default for BallisticsConfig {
     fn default() -> Self {
         Self {
-            sensitivity: 1.25,
-            threshold: 3.0,
-            acceleration_exponent: 1.35,
-            max_multiplier: 4.5,
+            sensitivity: 1.35,
+            threshold: 2.5,
+            acceleration_exponent: 1.25,
+            max_multiplier: 3.8,
         }
     }
 }
@@ -29,6 +29,9 @@ pub struct BallisticsEngine {
     pub config: BallisticsConfig,
     rem_x: f32,
     rem_y: f32,
+    smooth_dx: f32,
+    smooth_dy: f32,
+    has_active_stroke: bool,
 }
 
 impl BallisticsEngine {
@@ -37,6 +40,9 @@ impl BallisticsEngine {
             config,
             rem_x: 0.0,
             rem_y: 0.0,
+            smooth_dx: 0.0,
+            smooth_dy: 0.0,
+            has_active_stroke: false,
         }
     }
 
@@ -44,6 +50,9 @@ impl BallisticsEngine {
     pub fn reset_accumulator(&mut self) {
         self.rem_x = 0.0;
         self.rem_y = 0.0;
+        self.smooth_dx = 0.0;
+        self.smooth_dy = 0.0;
+        self.has_active_stroke = false;
     }
 
     /// Dynamically sets sensitivity factor.
@@ -53,26 +62,43 @@ impl BallisticsEngine {
 
     /// Applies non-linear acceleration to raw dx/dy and returns integer OS mouse steps.
     pub fn process_delta(&mut self, raw_dx: i16, raw_dy: i16) -> (i32, i32) {
-        let fx = raw_dx as f32;
-        let fy = raw_dy as f32;
+        self.process_delta_f32(raw_dx as f32, raw_dy as f32)
+    }
 
+    /// Applies adaptive low-pass smoothing and non-linear acceleration to floating-point deltas.
+    pub fn process_delta_f32(&mut self, fx: f32, fy: f32) -> (i32, i32) {
         let magnitude = (fx * fx + fy * fy).sqrt();
         if magnitude < 0.001 {
             return (0, 0);
         }
 
-        // Calculate velocity scaling factor
-        let multiplier = if magnitude <= self.config.threshold {
+        // Initialize stroke tracking on first movement event
+        if !self.has_active_stroke {
+            self.smooth_dx = fx;
+            self.smooth_dy = fy;
+            self.has_active_stroke = true;
+        } else {
+            // Adaptive low-pass filter: smooths micro-jitter on slow precision moves,
+            // while retaining instant response (alpha -> 1.0) on fast flicks
+            let alpha = (0.70 + 0.15 * (magnitude / self.config.threshold)).clamp(0.70, 1.0);
+            self.smooth_dx = self.smooth_dx * (1.0 - alpha) + fx * alpha;
+            self.smooth_dy = self.smooth_dy * (1.0 - alpha) + fy * alpha;
+        }
+
+        let v_mag = (self.smooth_dx * self.smooth_dx + self.smooth_dy * self.smooth_dy).sqrt();
+
+        // Calculate velocity scaling factor from smoothed velocity
+        let multiplier = if v_mag <= self.config.threshold {
             self.config.sensitivity
         } else {
-            let over = magnitude / self.config.threshold;
+            let over = v_mag / self.config.threshold;
             let boosted = self.config.sensitivity * over.powf(self.config.acceleration_exponent - 1.0);
             boosted.min(self.config.max_multiplier)
         };
 
         // Compute accelerated floating deltas with accumulated remainders
-        let target_x = fx * multiplier + self.rem_x;
-        let target_y = fy * multiplier + self.rem_y;
+        let target_x = self.smooth_dx * multiplier + self.rem_x;
+        let target_y = self.smooth_dy * multiplier + self.rem_y;
 
         // Truncate to integer pixels for OS injection
         let out_x = target_x.trunc() as i32;

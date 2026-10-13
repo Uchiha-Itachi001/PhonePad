@@ -1,5 +1,7 @@
 //! Input injection abstraction trait and types.
 
+pub const WHEEL_DELTA: i32 = 120;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseButton {
     Left,
@@ -112,8 +114,17 @@ pub trait InputInjector: Send + Sync {
     /// Releases a mouse button.
     fn mouse_up(&mut self, button: MouseButton);
 
-    /// Injects vertical and horizontal scroll wheel increments.
+    /// Injects vertical and horizontal scroll wheel increments (standard discrete notches).
     fn scroll(&mut self, dx: i32, dy: i32);
+
+    /// Injects high-resolution fractional wheel deltas directly to OS wheel APIs.
+    fn scroll_raw(&mut self, dx: i32, dy: i32) {
+        let notches_x = dx / crate::input::WHEEL_DELTA;
+        let notches_y = dy / crate::input::WHEEL_DELTA;
+        if notches_x != 0 || notches_y != 0 {
+            self.scroll(notches_x, notches_y);
+        }
+    }
 
     /// Injects Task View / Overview gesture (Win + Tab).
     fn show_task_view(&mut self);
@@ -159,6 +170,9 @@ pub trait InputInjector: Send + Sync {
 
     /// Injects a media or presentation slide control keystroke.
     fn send_media_key(&mut self, key: MediaKey);
+
+    /// Injects zoom in / zoom out (positive notches = zoom in via Ctrl+Wheel, negative = zoom out).
+    fn zoom(&mut self, notches: i32);
 }
 
 impl InputInjector for Box<dyn InputInjector> {
@@ -188,6 +202,10 @@ impl InputInjector for Box<dyn InputInjector> {
 
     fn scroll(&mut self, dx: i32, dy: i32) {
         (**self).scroll(dx, dy);
+    }
+
+    fn scroll_raw(&mut self, dx: i32, dy: i32) {
+        (**self).scroll_raw(dx, dy);
     }
 
     fn show_task_view(&mut self) {
@@ -232,5 +250,9 @@ impl InputInjector for Box<dyn InputInjector> {
 
     fn send_media_key(&mut self, key: MediaKey) {
         (**self).send_media_key(key);
+    }
+
+    fn zoom(&mut self, notches: i32) {
+        (**self).zoom(notches);
     }
 }

@@ -48,11 +48,19 @@ class PhonePadStatusBar extends StatelessWidget {
     }
 
     return Container(
-      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      margin: margin ??
+          EdgeInsets.symmetric(
+            horizontal: isLandscape ? 12 : 16,
+            vertical: isLandscape ? 4 : 8,
+          ),
+      height: isLandscape ? 44 : null,
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 10 : 14,
+        vertical: isLandscape ? 4 : 8,
+      ),
       decoration: BoxDecoration(
         color: theme.backgroundSecondary.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(isLandscape ? 14 : 20),
         border: Border.all(
           color: status == ConnectionStatus.connected
               ? theme.accentPrimary.withValues(alpha: 0.35)
@@ -71,8 +79,8 @@ class PhonePadStatusBar extends StatelessWidget {
         children: [
           // Animated Status Dot
           Container(
-            width: 8,
-            height: 8,
+            width: isLandscape ? 6 : 8,
+            height: isLandscape ? 6 : 8,
             decoration: BoxDecoration(
               color: statusColor,
               shape: BoxShape.circle,
@@ -85,18 +93,19 @@ class PhonePadStatusBar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: isLandscape ? 6 : 10),
 
           // Status & Destination
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'PhonePad • $statusText',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: isLandscape ? 11 : 12,
                     fontWeight: FontWeight.w700,
                     color: theme.textPrimary,
                     letterSpacing: 0.2,
@@ -104,8 +113,10 @@ class PhonePadStatusBar extends StatelessWidget {
                 ),
                 Text(
                   destination,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: isLandscape ? 9 : 10,
                     color: theme.textSecondary,
                   ),
                 ),
@@ -116,8 +127,11 @@ class PhonePadStatusBar extends StatelessWidget {
           // Pointer Count Badge
           if (pointerCount > 0)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              margin: const EdgeInsets.only(right: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: isLandscape ? 6 : 8,
+                vertical: isLandscape ? 1 : 2,
+              ),
+              margin: EdgeInsets.only(right: isLandscape ? 4 : 8),
               decoration: BoxDecoration(
                 color: theme.accentPrimary.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
@@ -125,7 +139,7 @@ class PhonePadStatusBar extends StatelessWidget {
               child: Text(
                 '${pointerCount}P',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: isLandscape ? 9 : 10,
                   fontWeight: FontWeight.bold,
                   color: theme.accentPrimary,
                 ),
@@ -141,8 +155,8 @@ class PhonePadStatusBar extends StatelessWidget {
                 onToggleOrientation!();
               },
               child: Container(
-                padding: const EdgeInsets.all(8),
-                margin: const EdgeInsets.only(right: 8),
+                padding: EdgeInsets.all(isLandscape ? 5 : 8),
+                margin: EdgeInsets.only(right: isLandscape ? 6 : 8),
                 decoration: BoxDecoration(
                   color: isLandscape
                       ? theme.accentPrimary.withValues(alpha: 0.18)
@@ -159,7 +173,7 @@ class PhonePadStatusBar extends StatelessWidget {
                   isLandscape
                       ? Icons.stay_current_portrait_rounded
                       : Icons.stay_current_landscape_rounded,
-                  size: 18,
+                  size: isLandscape ? 15 : 18,
                   color: isLandscape ? theme.accentPrimary : theme.textPrimary,
                 ),
               ),
@@ -173,7 +187,7 @@ class PhonePadStatusBar extends StatelessWidget {
               onSettingsTap();
             },
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(isLandscape ? 5 : 8),
               decoration: BoxDecoration(
                 color: theme.surfaceCard,
                 shape: BoxShape.circle,
@@ -184,7 +198,7 @@ class PhonePadStatusBar extends StatelessWidget {
               ),
               child: Icon(
                 Icons.tune_rounded,
-                size: 18,
+                size: isLandscape ? 15 : 18,
                 color: theme.textPrimary,
               ),
             ),

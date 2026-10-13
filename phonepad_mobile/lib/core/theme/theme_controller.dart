@@ -179,12 +179,14 @@ class ThemeController extends ChangeNotifier {
   DotMatrixDensity _dotDensity = DotMatrixDensity.dense;
   bool _twoFingerNavEnabled = true;
   bool _threeFingerSwitcherEnabled = true;
+  bool _pinchZoomEnabled = true;
   double _motionSensitivity = 1.0;
 
   PhonePadThemeData get theme => _currentTheme;
   DotMatrixDensity get dotDensity => _dotDensity;
   bool get twoFingerNavEnabled => _twoFingerNavEnabled;
   bool get threeFingerSwitcherEnabled => _threeFingerSwitcherEnabled;
+  bool get pinchZoomEnabled => _pinchZoomEnabled;
   double get motionSensitivity => _motionSensitivity;
 
   void setTheme(AppThemeId id) {
@@ -211,6 +213,13 @@ class ThemeController extends ChangeNotifier {
   void setThreeFingerSwitcher(bool enabled) {
     if (_threeFingerSwitcherEnabled != enabled) {
       _threeFingerSwitcherEnabled = enabled;
+      notifyListeners();
+    }
+  }
+
+  void setPinchZoom(bool enabled) {
+    if (_pinchZoomEnabled != enabled) {
+      _pinchZoomEnabled = enabled;
       notifyListeners();
     }
   }

@@ -9,7 +9,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_MEDIA_PLAY_PAUSE, VK_MENU, VK_MULTIPLY, VK_NEXT, VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2,
     VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9,
     VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SUBTRACT, VK_TAB, VK_VOLUME_DOWN, VK_VOLUME_MUTE,
-    VK_VOLUME_UP, VK_LEFT,
+    VK_VOLUME_UP, VK_LEFT, VK_CONTROL,
 };
 
 const WHEEL_DELTA: i32 = 120;
@@ -125,17 +125,19 @@ impl InputInjector for WindowsInjector {
         Self::send_mouse_input(MOUSEEVENTF_MIDDLEUP, 0, 0, 0);
     }
 
-    fn scroll(&mut self, dx: i32, dy: i32) {
-        // Vertical wheel: positive dy scrolls up
+    fn scroll_raw(&mut self, dx: i32, dy: i32) {
+        // High-resolution continuous wheel: positive dy scrolls up
         if dy != 0 {
-            let delta = dy * WHEEL_DELTA;
-            Self::send_mouse_input(MOUSEEVENTF_WHEEL, 0, 0, delta as u32);
+            Self::send_mouse_input(MOUSEEVENTF_WHEEL, 0, 0, dy as u32);
         }
-        // Horizontal wheel: positive dx scrolls right
+        // High-resolution horizontal wheel: positive dx scrolls right
         if dx != 0 {
-            let delta = dx * WHEEL_DELTA;
-            Self::send_mouse_input(MOUSEEVENTF_HWHEEL, 0, 0, delta as u32);
+            Self::send_mouse_input(MOUSEEVENTF_HWHEEL, 0, 0, dx as u32);
         }
+    }
+
+    fn scroll(&mut self, dx: i32, dy: i32) {
+        self.scroll_raw(dx * WHEEL_DELTA, dy * WHEEL_DELTA);
     }
 
     fn show_task_view(&mut self) {
@@ -241,5 +243,19 @@ impl InputInjector for WindowsInjector {
         };
         log::debug!("Injecting Media key {:?}", key);
         Self::tap_single_key(vk);
+    }
+
+    fn zoom(&mut self, notches: i32) {
+        if notches == 0 {
+            return;
+        }
+        log::debug!("Injecting Zoom via Ctrl+Wheel: notches={}", notches);
+        // Hold Ctrl down
+        Self::send_key(VK_CONTROL, false);
+        // Inject wheel delta (positive = zoom in, negative = zoom out)
+        let delta = notches * WHEEL_DELTA;
+        Self::send_mouse_input(MOUSEEVENTF_WHEEL, 0, 0, delta as u32);
+        // Release Ctrl
+        Self::send_key(VK_CONTROL, true);
     }
 }

@@ -5,7 +5,6 @@ import '../../../core/network/transport.dart';
 import '../../../core/power/power_governor.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
-import '../../../core/theme/colors.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../modes/models/surface_mode.dart';
 import '../../modes/presentation/mode_selector.dart';
@@ -47,9 +46,10 @@ class _TouchSurfaceState extends State<TouchSurface> {
   @override
   void initState() {
     super.initState();
+    _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
     _status = widget.transport.status;
-    _ownsGovernor = widget.powerGovernor == null;
-    _powerGovernor = widget.powerGovernor ?? PowerGovernor();
+    _ownsGovernor = false;
+    _powerGovernor = widget.powerGovernor ?? PowerGovernor.instance;
 
     _powerGovernor.addListener(_onPowerGovernorChange);
 
@@ -116,6 +116,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
       builder: (context, _) {
         final theme = ThemeController.instance.theme;
         _detector.twoFingerNavEnabled = ThemeController.instance.twoFingerNavEnabled;
+        _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
 
         return Scaffold(
           backgroundColor: theme.backgroundPrimary,
@@ -129,33 +130,37 @@ class _TouchSurfaceState extends State<TouchSurface> {
                     Column(
                       children: [
                         if (isLandscape) ...[
-                          // Landscape Compact Top Bar (Status + Mode selector side by side)
+                          // Landscape Compact Top Bar (Status + Mode selector side by side with identical 44px height)
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: PhonePadStatusBar(
-                                    status: _status,
-                                    destination: widget.destination,
-                                    pointerCount: _detector.pointerCount,
-                                    onSettingsTap: widget.onSettingsTap,
-                                    onToggleOrientation: () => _toggleOrientation(isLandscape),
-                                    isLandscape: true,
-                                    margin: EdgeInsets.zero,
+                            child: SizedBox(
+                              height: 44,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: PhonePadStatusBar(
+                                      status: _status,
+                                      destination: widget.destination,
+                                      pointerCount: _detector.pointerCount,
+                                      onSettingsTap: widget.onSettingsTap,
+                                      onToggleOrientation: () => _toggleOrientation(isLandscape),
+                                      isLandscape: true,
+                                      margin: EdgeInsets.zero,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                ModeSelector(
-                                  currentMode: _currentMode,
-                                  onModeChanged: (mode) {
-                                    setState(() {
-                                      _currentMode = mode;
-                                    });
-                                    _powerGovernor.recordActivity();
-                                  },
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  ModeSelector(
+                                    currentMode: _currentMode,
+                                    isLandscape: true,
+                                    onModeChanged: (mode) {
+                                      setState(() {
+                                        _currentMode = mode;
+                                      });
+                                      _powerGovernor.recordActivity();
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ] else ...[
@@ -421,48 +426,49 @@ class _TouchSurfaceState extends State<TouchSurface> {
           ),
         ),
 
-        // Bottom Tactile Click Deck (Equal 50/50 Sizing & High-Grade Icons)
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: isLandscape ? 12 : 16,
-            vertical: isLandscape ? 6 : 10,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: _buildClickPad(
-                  title: 'LEFT CLICK',
-                  subtitle: 'PRIMARY',
-                  icon: Icons.mouse_rounded,
-                  theme: theme,
-                  isLandscape: isLandscape,
-                  isPrimary: true,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapLeft));
-                  },
+        // Bottom Tactile Click Deck (Shown only in portrait mode; removed in horizontal landscape mode)
+        if (!isLandscape)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: _buildClickPad(
+                    title: 'LEFT CLICK',
+                    subtitle: 'PRIMARY',
+                    icon: Icons.mouse_rounded,
+                    theme: theme,
+                    isLandscape: isLandscape,
+                    isPrimary: true,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapLeft));
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 1,
-                child: _buildClickPad(
-                  title: 'RIGHT CLICK',
-                  subtitle: 'CONTEXT',
-                  icon: Icons.menu_open_rounded,
-                  theme: theme,
-                  isLandscape: isLandscape,
-                  isPrimary: false,
-                  onTap: () {
-                    HapticFeedback.heavyImpact();
-                    _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapRight));
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 1,
+                  child: _buildClickPad(
+                    title: 'RIGHT CLICK',
+                    subtitle: 'CONTEXT',
+                    icon: Icons.menu_open_rounded,
+                    theme: theme,
+                    isLandscape: isLandscape,
+                    isPrimary: false,
+                    onTap: () {
+                      HapticFeedback.heavyImpact();
+                      _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapRight));
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

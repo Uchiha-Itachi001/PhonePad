@@ -56,7 +56,15 @@ impl Packet {
     pub fn haptic_requested(&self) -> bool {
         (self.flags & 0x08) != 0
     }
+
+    /// Bit 4: Mobile client sending 8x sub-pixel high-resolution deltas (Q3 fixed point).
+    #[inline]
+    pub fn is_high_res(&self) -> bool {
+        (self.flags & FLAG_HIGH_RES) != 0
+    }
 }
+
+pub const FLAG_HIGH_RES: u8 = 0x10;
 
 #[cfg(test)]
 mod tests {

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/network/bluetooth_transport.dart';
 import '../../../core/network/discovery_client.dart';
-import '../../../core/theme/colors.dart';
+import '../../../core/power/power_governor.dart';
 import '../../../core/theme/theme_controller.dart';
 
-/// Modal dialog for discovering and selecting PhonePad PC hosts via Wi-Fi or Bluetooth.
+/// Redesigned Control Center modal with unified Connections tab, sub-tabs, and AMOLED power settings.
 class ConnectionHubModal extends StatefulWidget {
   final DiscoveryClient discoveryClient;
   final BluetoothTransport bluetoothTransport;
@@ -29,10 +29,11 @@ class ConnectionHubModal extends StatefulWidget {
 class _ConnectionHubModalState extends State<ConnectionHubModal>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _connectionSubTab = 0; // 0: Wi-Fi Auto, 1: Bluetooth, 2: Manual IP
+
   final TextEditingController _ipController =
       TextEditingController(text: '192.168.1.15:4242');
-  final TextEditingController _pinController =
-      TextEditingController();
+  final TextEditingController _pinController = TextEditingController();
 
   List<DiscoveredHost> _wifiHosts = [];
   List<BluetoothDeviceInfo> _btDevices = [];
@@ -41,7 +42,9 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this, initialIndex: widget.isBluetooth ? 1 : 0);
+    // 4 Main Tabs: Connections, Appearance, Gestures, Power Saver
+    _tabController = TabController(length: 4, vsync: this, initialIndex: 0);
+    _connectionSubTab = widget.isBluetooth ? 1 : 0;
     _wifiHosts = widget.discoveryClient.currentHosts;
 
     widget.discoveryClient.startDiscovery();
@@ -76,6 +79,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
   void dispose() {
     _tabController.dispose();
     _ipController.dispose();
+    _pinController.dispose();
     super.dispose();
   }
 
@@ -86,8 +90,10 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
       builder: (context, _) {
         final theme = ThemeController.instance.theme;
 
+        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
         return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
+          height: MediaQuery.of(context).size.height * (isLandscape ? 0.94 : 0.88),
           decoration: BoxDecoration(
             color: theme.backgroundSecondary,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -95,12 +101,15 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
           ),
           child: Column(
             children: [
-              // Drag handle
+              // Drag Handle Indicator (Ultra-compact in landscape)
               Center(
                 child: Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 44,
-                  height: 4,
+                  margin: EdgeInsets.only(
+                    top: isLandscape ? 4 : 10,
+                    bottom: isLandscape ? 2 : 6,
+                  ),
+                  width: isLandscape ? 32 : 40,
+                  height: isLandscape ? 3 : 4,
                   decoration: BoxDecoration(
                     color: theme.textSecondary.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
@@ -108,9 +117,12 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                 ),
               ),
 
-              // Header
+              // Control Center Header (Scaled down in landscape)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: isLandscape ? 2 : 6,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -118,94 +130,137 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'CONTROL CENTER',
+                          'SETTINGS & CONTROL',
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: isLandscape ? 13 : 16,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
+                            letterSpacing: isLandscape ? 1.0 : 1.4,
                             color: theme.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Connections • Themes • Gestures',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.textSecondary,
+                        if (!isLandscape) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Configure Wireless Links, Visuals & Power',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: theme.textSecondary,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                     IconButton(
-                      icon: Icon(Icons.close_rounded, color: theme.textSecondary),
+                      visualDensity: isLandscape ? VisualDensity.compact : VisualDensity.standard,
+                      padding: isLandscape ? EdgeInsets.zero : const EdgeInsets.all(8),
+                      constraints: isLandscape ? const BoxConstraints() : null,
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: theme.textSecondary,
+                        size: isLandscape ? 18 : 22,
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
               ),
 
-              // Tab Bar
+              // Top Primary Tab Bar (4 Unified Tabs - Slim 34px in Landscape)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
+                margin: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: isLandscape ? 2 : 4,
+                ),
                 decoration: BoxDecoration(
                   color: theme.surfaceCard,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(isLandscape ? 12 : 16),
                   border: Border.all(color: theme.borderSubtle),
                 ),
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  indicator: BoxDecoration(
-                    color: theme.accentPrimary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: theme.accentPrimary.withValues(alpha: 0.6),
-                      width: 1,
+                child: SizedBox(
+                  height: isLandscape ? 34 : null,
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: BoxDecoration(
+                      color: theme.accentPrimary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(isLandscape ? 10 : 14),
+                      border: Border.all(
+                        color: theme.accentPrimary.withValues(alpha: 0.6),
+                        width: 1,
+                      ),
                     ),
+                    labelColor: theme.accentPrimary,
+                    unselectedLabelColor: theme.textSecondary,
+                    labelPadding: isLandscape ? const EdgeInsets.symmetric(horizontal: 4) : null,
+                    labelStyle: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isLandscape ? 10 : 11,
+                    ),
+                    tabs: isLandscape
+                        ? const [
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.sensors_rounded, size: 13),
+                                  SizedBox(width: 4),
+                                  Text('Connect'),
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.palette_rounded, size: 13),
+                                  SizedBox(width: 4),
+                                  Text('Themes'),
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.tune_rounded, size: 13),
+                                  SizedBox(width: 4),
+                                  Text('Gestures'),
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.battery_saver_rounded, size: 13),
+                                  SizedBox(width: 4),
+                                  Text('Power'),
+                                ],
+                              ),
+                            ),
+                          ]
+                        : const [
+                            Tab(icon: Icon(Icons.sensors_rounded, size: 16), text: 'Connect'),
+                            Tab(icon: Icon(Icons.palette_rounded, size: 16), text: 'Themes'),
+                            Tab(icon: Icon(Icons.tune_rounded, size: 16), text: 'Gestures'),
+                            Tab(icon: Icon(Icons.battery_saver_rounded, size: 16), text: 'Power'),
+                          ],
                   ),
-                  labelColor: theme.accentPrimary,
-                  unselectedLabelColor: theme.textSecondary,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  tabs: const [
-                    Tab(
-                      icon: Icon(Icons.wifi_rounded, size: 16),
-                      text: 'Wi-Fi Auto',
-                    ),
-                    Tab(
-                      icon: Icon(Icons.bluetooth_rounded, size: 16),
-                      text: 'Bluetooth',
-                    ),
-                    Tab(
-                      icon: Icon(Icons.lan_rounded, size: 16),
-                      text: 'Manual IP',
-                    ),
-                    Tab(
-                      icon: Icon(Icons.palette_rounded, size: 16),
-                      text: 'Themes & Grid',
-                    ),
-                    Tab(
-                      icon: Icon(Icons.tune_rounded, size: 16),
-                      text: 'Gestures',
-                    ),
-                  ],
                 ),
               ),
 
-              const SizedBox(height: 12),
+              SizedBox(height: isLandscape ? 3 : 8),
 
               // Tab Views
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildWifiAutoTab(),
-                    _buildBluetoothTab(),
-                    _buildManualIpTab(),
-                    _buildThemesAndGridTab(),
-                    _buildGesturesTab(),
+                    _buildConnectionsTab(theme),
+                    _buildThemesAndGridTab(theme),
+                    _buildGesturesTab(theme),
+                    _buildPowerSaverTab(theme),
                   ],
                 ),
               ),
@@ -216,34 +271,153 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
     );
   }
 
-  Widget _buildWifiAutoTab() {
+  // =========================================================================
+  // TAB 1: UNIFIED CONNECTIONS (WITH SUB-TABS)
+  // =========================================================================
+
+  Widget _buildConnectionsTab(PhonePadThemeData theme) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    return Column(
+      children: [
+        // Sub-tabs Segmented Pill Bar
+        Container(
+          margin: EdgeInsets.symmetric(horizontal: 20, vertical: isLandscape ? 3 : 6),
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: theme.surfaceCard.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.borderSubtle),
+          ),
+          child: Row(
+            children: [
+              _buildSubTabButton(
+                title: 'Wi-Fi Auto',
+                icon: Icons.wifi_rounded,
+                index: 0,
+                theme: theme,
+                isLandscape: isLandscape,
+              ),
+              _buildSubTabButton(
+                title: 'Bluetooth',
+                icon: Icons.bluetooth_rounded,
+                index: 1,
+                theme: theme,
+                isLandscape: isLandscape,
+              ),
+              _buildSubTabButton(
+                title: 'Manual IP',
+                icon: Icons.lan_rounded,
+                index: 2,
+                theme: theme,
+                isLandscape: isLandscape,
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(height: isLandscape ? 3 : 6),
+
+        // Sub-tab Content
+        Expanded(
+          child: IndexedStack(
+            index: _connectionSubTab,
+            children: [
+              _buildWifiAutoContent(theme),
+              _buildBluetoothContent(theme),
+              _buildManualIpContent(theme),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubTabButton({
+    required String title,
+    required IconData icon,
+    required int index,
+    required PhonePadThemeData theme,
+    required bool isLandscape,
+  }) {
+    final isSelected = _connectionSubTab == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _connectionSubTab = index;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(vertical: isLandscape ? 4 : 7),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.accentPrimary.withValues(alpha: 0.22)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: isSelected
+                  ? theme.accentPrimary.withValues(alpha: 0.6)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: isLandscape ? 13 : 14,
+                color: isSelected ? theme.accentPrimary : theme.textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: isLandscape ? 10 : 11,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? theme.textPrimary : theme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Wi-Fi Auto Sub-Tab ---
+  Widget _buildWifiAutoContent(PhonePadThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'DISCOVERED PC HOSTS',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
-                  color: PhonePadColors.textSecondary,
+                  color: theme.textSecondary,
                 ),
               ),
               TextButton.icon(
                 onPressed: () {
+                  HapticFeedback.lightImpact();
                   widget.discoveryClient.sendDiscoveryProbe();
                 },
-                icon: const Icon(Icons.refresh_rounded, size: 16, color: PhonePadColors.accentEmerald),
-                label: const Text('Scan Again', style: TextStyle(color: PhonePadColors.accentEmerald, fontSize: 12)),
+                icon: Icon(Icons.refresh_rounded, size: 15, color: theme.accentPrimary),
+                label: Text('Scan', style: TextStyle(color: theme.accentPrimary, fontSize: 11)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           if (_wifiHosts.isEmpty)
             Expanded(
@@ -252,36 +426,36 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: PhonePadColors.accentEmerald.withValues(alpha: 0.08),
+                        color: theme.accentPrimary.withValues(alpha: 0.08),
                         border: Border.all(
-                          color: PhonePadColors.accentEmerald.withValues(alpha: 0.2),
+                          color: theme.accentPrimary.withValues(alpha: 0.2),
                         ),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.wifi_tethering_rounded,
-                        color: PhonePadColors.accentEmerald,
-                        size: 36,
+                        color: theme.accentPrimary,
+                        size: 32,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Broadcasting UDP Beacon...',
-                      style: TextStyle(
-                        color: PhonePadColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 14),
                     Text(
-                      'Make sure PhonePad Host is running on your PC\nand both devices are on the same Wi-Fi or Hotspot.',
+                      'Listening for UDP Beacon...',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ensure PhonePad Host is running on PC and\nboth devices are on the same Wi-Fi network.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: PhonePadColors.textSecondary.withValues(alpha: 0.8),
-                        fontSize: 12,
+                        color: theme.textSecondary.withValues(alpha: 0.8),
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -297,17 +471,16 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                   final isCurrent = widget.currentDestination == host.destination && !widget.isBluetooth;
 
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: isCurrent
-                          ? PhonePadColors.accentEmerald.withValues(alpha: 0.12)
-                          : Colors.white.withValues(alpha: 0.04),
+                          ? theme.accentPrimary.withValues(alpha: 0.12)
+                          : theme.surfaceCard,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isCurrent
-                            ? PhonePadColors.accentEmerald.withValues(alpha: 0.6)
-                            : Colors.white.withValues(alpha: 0.08),
+                        color: isCurrent ? theme.accentPrimary : theme.borderSubtle,
+                        width: isCurrent ? 1.5 : 1.0,
                       ),
                     ),
                     child: Row(
@@ -315,38 +488,38 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: PhonePadColors.accentEmerald.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
+                            color: theme.accentPrimary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.laptop_chromebook_rounded, color: PhonePadColors.accentEmerald),
+                          child: Icon(Icons.laptop_windows_rounded, color: theme.accentPrimary, size: 20),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 host.name,
-                                style: const TextStyle(
+                                style: TextStyle(
+                                  fontSize: 13,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: PhonePadColors.textPrimary,
+                                  color: theme.textPrimary,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${host.destination} • Latency < 2ms',
-                                style: const TextStyle(fontSize: 12, color: PhonePadColors.textSecondary),
+                                host.destination,
+                                style: TextStyle(fontSize: 11, color: theme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: PhonePadColors.accentEmerald,
-                            foregroundColor: Colors.black,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            backgroundColor: isCurrent ? theme.surfaceCard : theme.accentPrimary,
+                            foregroundColor: isCurrent ? theme.accentPrimary : Colors.black,
+                            elevation: isCurrent ? 0 : 4,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: () {
@@ -354,8 +527,8 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                             widget.onConnect(host.destination, false, host.name, host.pin);
                           },
                           child: Text(
-                            isCurrent ? 'Active' : 'Connect ⚡',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            isCurrent ? 'Active' : 'Connect',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                           ),
                         ),
                       ],
@@ -369,57 +542,78 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
     );
   }
 
-  Widget _buildBluetoothTab() {
+  // --- Bluetooth Sub-Tab ---
+  Widget _buildBluetoothContent(PhonePadThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'PAIRED BLUETOOTH PCs',
+              Text(
+                'PAIRED BLUETOOTH DEVICES',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
-                  color: PhonePadColors.textSecondary,
+                  color: theme.textSecondary,
                 ),
               ),
               TextButton.icon(
                 onPressed: _loadBluetoothDevices,
-                icon: const Icon(Icons.refresh_rounded, size: 16, color: PhonePadColors.accentCyan),
-                label: const Text('Refresh', style: TextStyle(color: PhonePadColors.accentCyan, fontSize: 12)),
+                icon: Icon(Icons.refresh_rounded, size: 15, color: theme.accentSecondary),
+                label: Text('Refresh', style: TextStyle(color: theme.accentSecondary, fontSize: 11)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           if (_isLoadingBt)
-            const Expanded(child: Center(child: CircularProgressIndicator(color: PhonePadColors.accentCyan)))
+            const Expanded(
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
           else if (_btDevices.isEmpty)
             Expanded(
               child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.bluetooth_searching_rounded, size: 40, color: PhonePadColors.textSecondary),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'No Paired Bluetooth PCs',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: PhonePadColors.textPrimary),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.accentSecondary.withValues(alpha: 0.08),
+                        border: Border.all(
+                          color: theme.accentSecondary.withValues(alpha: 0.2),
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Pair your phone with your laptop in Windows Bluetooth Settings first, then tap Refresh.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: PhonePadColors.textSecondary.withValues(alpha: 0.8), fontSize: 12),
+                      child: Icon(
+                        Icons.bluetooth_searching_rounded,
+                        color: theme.accentSecondary,
+                        size: 32,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'No Paired Bluetooth Devices',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Pair your PC in Android Bluetooth Settings first,\nthen tap Refresh above.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: theme.textSecondary.withValues(alpha: 0.8),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
@@ -429,20 +623,19 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                 itemCount: _btDevices.length,
                 itemBuilder: (context, index) {
                   final dev = _btDevices[index];
-                  final isCurrent = widget.currentDestination == dev.name && widget.isBluetooth;
+                  final isCurrent = widget.currentDestination == dev.address && widget.isBluetooth;
 
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: isCurrent
-                          ? PhonePadColors.accentCyan.withValues(alpha: 0.12)
-                          : Colors.white.withValues(alpha: 0.04),
+                          ? theme.accentSecondary.withValues(alpha: 0.12)
+                          : theme.surfaceCard,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isCurrent
-                            ? PhonePadColors.accentCyan.withValues(alpha: 0.6)
-                            : Colors.white.withValues(alpha: 0.08),
+                        color: isCurrent ? theme.accentSecondary : theme.borderSubtle,
+                        width: isCurrent ? 1.5 : 1.0,
                       ),
                     ),
                     child: Row(
@@ -450,38 +643,38 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: PhonePadColors.accentCyan.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
+                            color: theme.accentSecondary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.bluetooth_connected_rounded, color: PhonePadColors.accentCyan),
+                          child: Icon(Icons.bluetooth_connected_rounded, color: theme.accentSecondary, size: 20),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 dev.name,
-                                style: const TextStyle(
+                                style: TextStyle(
+                                  fontSize: 13,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: PhonePadColors.textPrimary,
+                                  color: theme.textPrimary,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 dev.address,
-                                style: const TextStyle(fontSize: 12, color: PhonePadColors.textSecondary),
+                                style: TextStyle(fontSize: 11, color: theme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: PhonePadColors.accentCyan,
-                            foregroundColor: Colors.black,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            backgroundColor: isCurrent ? theme.surfaceCard : theme.accentSecondary,
+                            foregroundColor: isCurrent ? theme.accentSecondary : Colors.black,
+                            elevation: isCurrent ? 0 : 4,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: () {
@@ -490,7 +683,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                           },
                           child: Text(
                             isCurrent ? 'Active' : 'Connect',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                           ),
                         ),
                       ],
@@ -504,84 +697,87 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
     );
   }
 
-  Widget _buildManualIpTab() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
+  // --- Manual IP Sub-Tab ---
+  Widget _buildManualIpContent(PhonePadThemeData theme) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'HOST IP ADDRESS & PORT',
+          Text(
+            'HOST IP ADDRESS & PIN',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.2,
-              color: PhonePadColors.textSecondary,
+              color: theme.textSecondary,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Enter the IP and Security PIN displayed on the PhonePad Host desktop window.',
-            style: TextStyle(fontSize: 12, color: PhonePadColors.textSecondary.withValues(alpha: 0.8)),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _ipController,
-            style: const TextStyle(color: PhonePadColors.textPrimary, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
-              prefixIcon: const Icon(Icons.lan_rounded, color: PhonePadColors.accentEmerald),
-              hintText: '192.168.1.15:4242',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: PhonePadColors.accentEmerald, width: 1.5),
-              ),
-            ),
+            'Enter the IP address and PIN shown on the PhonePad Host desktop window.',
+            style: TextStyle(fontSize: 11, color: theme.textSecondary.withValues(alpha: 0.8)),
           ),
           const SizedBox(height: 12),
           TextField(
-            controller: _pinController,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(color: PhonePadColors.textPrimary, fontWeight: FontWeight.bold),
+            controller: _ipController,
+            style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
-              prefixIcon: const Icon(Icons.password_rounded, color: PhonePadColors.accentEmerald),
-              hintText: 'Security PIN (shown on PC)',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+              fillColor: theme.surfaceCard,
+              prefixIcon: Icon(Icons.lan_rounded, color: theme.accentPrimary, size: 20),
+              hintText: '192.168.1.15:4242',
+              hintStyle: TextStyle(color: theme.textSecondary.withValues(alpha: 0.4), fontSize: 13),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: PhonePadColors.accentEmerald, width: 1.5),
+                borderSide: BorderSide(color: theme.accentPrimary, width: 1.5),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _pinController,
+            keyboardType: TextInputType.number,
+            style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: theme.surfaceCard,
+              prefixIcon: Icon(Icons.password_rounded, color: theme.accentPrimary, size: 20),
+              hintText: 'Security PIN (shown on Host)',
+              hintStyle: TextStyle(color: theme.textSecondary.withValues(alpha: 0.4), fontSize: 13),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: theme.accentPrimary, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: theme.borderSubtle),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
                     _ipController.text = '127.0.0.1:4242';
                   },
-                  child: const Text('Use ADB Localhost', style: TextStyle(color: PhonePadColors.textPrimary)),
+                  child: Text('ADB Localhost', style: TextStyle(color: theme.textPrimary, fontSize: 12)),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: PhonePadColors.accentEmerald,
+                    backgroundColor: theme.accentPrimary,
                     foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
@@ -592,7 +788,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                       widget.onConnect(target, false, 'Wi-Fi: $target', pin);
                     }
                   },
-                  child: const Text('Connect via IP', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Connect IP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
               ),
             ],
@@ -602,12 +798,15 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
     );
   }
 
-  Widget _buildThemesAndGridTab() {
-    final currentTheme = ThemeController.instance.theme;
+  // =========================================================================
+  // TAB 2: THEMES & GRID MATRIX
+  // =========================================================================
+
+  Widget _buildThemesAndGridTab(PhonePadThemeData currentTheme) {
     final currentDensity = ThemeController.instance.dotDensity;
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       children: [
         Text(
           'COLOR PALETTE THEMES',
@@ -618,7 +817,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
             color: currentTheme.textSecondary,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
 
         ...PhonePadThemeData.allThemes.map((t) {
           final isSelected = t.id == currentTheme.id;
@@ -628,28 +827,25 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
               ThemeController.instance.setTheme(t.id);
             },
             child: Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isSelected
                     ? t.accentPrimary.withValues(alpha: 0.12)
                     : currentTheme.surfaceCard,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: isSelected
-                      ? t.accentPrimary
-                      : currentTheme.borderSubtle,
+                  color: isSelected ? t.accentPrimary : currentTheme.borderSubtle,
                   width: isSelected ? 1.5 : 1.0,
                 ),
               ),
               child: Row(
                 children: [
-                  // Palette Preview Circles
                   Row(
                     children: [
                       Container(
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: t.accentPrimary,
@@ -658,101 +854,14 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                       ),
                       const SizedBox(width: 4),
                       Container(
-                        width: 14,
-                        height: 14,
+                        width: 12,
+                        height: 12,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: t.accentSecondary,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: t.surfaceCard,
-                        ),
-                      ),
                     ],
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          t.name,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: currentTheme.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          t.subtitle,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: currentTheme.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isSelected)
-                    Icon(
-                      Icons.check_circle_rounded,
-                      color: t.accentPrimary,
-                      size: 20,
-                    ),
-                ],
-              ),
-            ),
-          );
-        }),
-
-        const SizedBox(height: 16),
-        Text(
-          'TOUCHPAD DOT MATRIX DENSITY',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: currentTheme.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        ...DotMatrixDensity.values.map((d) {
-          final isSelected = d == currentDensity;
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              ThemeController.instance.setDotDensity(d);
-            },
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? currentTheme.accentPrimary.withValues(alpha: 0.12)
-                    : currentTheme.surfaceCard,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isSelected
-                      ? currentTheme.accentPrimary
-                      : currentTheme.borderSubtle,
-                  width: isSelected ? 1.5 : 1.0,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isSelected ? Icons.grid_view_rounded : Icons.grid_on_rounded,
-                    size: 18,
-                    color: isSelected
-                        ? currentTheme.accentPrimary
-                        : currentTheme.textSecondary,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -760,7 +869,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          d.label,
+                          t.name,
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -768,9 +877,9 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                           ),
                         ),
                         Text(
-                          d.description,
+                          t.subtitle,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10.5,
                             color: currentTheme.textSecondary,
                           ),
                         ),
@@ -778,28 +887,17 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                     ),
                   ),
                   if (isSelected)
-                    Icon(
-                      Icons.check_rounded,
-                      color: currentTheme.accentPrimary,
-                      size: 18,
-                    ),
+                    Icon(Icons.check_circle_rounded, color: t.accentPrimary, size: 18),
                 ],
               ),
             ),
           );
         }),
-      ],
-    );
-  }
 
-  Widget _buildGesturesTab() {
-    final currentTheme = ThemeController.instance.theme;
+        const SizedBox(height: 14),
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      children: [
         Text(
-          'TOUCHPAD GESTURE BEHAVIOR',
+          'DOT MATRIX DENSITY',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w800,
@@ -807,28 +905,99 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
             color: currentTheme.textSecondary,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: currentTheme.surfaceCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: currentTheme.borderSubtle),
+          ),
+          child: Row(
+            children: DotMatrixDensity.values.map((d) {
+              final isSel = d == currentDensity;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ThemeController.instance.setDotDensity(d);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? currentTheme.accentPrimary.withValues(alpha: 0.2)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSel
+                            ? currentTheme.accentPrimary.withValues(alpha: 0.6)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Text(
+                      d.label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                        color: isSel
+                            ? currentTheme.textPrimary
+                            : currentTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  // =========================================================================
+  // TAB 3: GESTURES
+  // =========================================================================
+
+  Widget _buildGesturesTab(PhonePadThemeData currentTheme) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      children: [
+        Text(
+          'TRACKPAD GESTURES',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: currentTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
 
         // 2-Finger Nav Switch
         Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: currentTheme.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: currentTheme.borderSubtle),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: currentTheme.accentPrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.swipe_rounded, color: currentTheme.accentPrimary, size: 20),
+                child: Icon(Icons.swipe_rounded, color: currentTheme.accentPrimary, size: 18),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -836,22 +1005,21 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                     Text(
                       '2-Finger Browser Back / Forward',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.bold,
                         color: currentTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      'Swipe left/right to navigate back & forward in browsers and Explorer (Alt + Left/Right).',
-                      style: TextStyle(fontSize: 11, color: currentTheme.textSecondary),
+                      'Swipe horizontal for Alt + Left/Right page navigation.',
+                      style: TextStyle(fontSize: 10.5, color: currentTheme.textSecondary),
                     ),
                   ],
                 ),
               ),
               Switch(
                 value: ThemeController.instance.twoFingerNavEnabled,
-                activeColor: currentTheme.accentPrimary,
+                activeThumbColor: currentTheme.accentPrimary,
                 onChanged: (val) {
                   HapticFeedback.selectionClick();
                   ThemeController.instance.setTwoFingerNav(val);
@@ -864,23 +1032,23 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
         // 3-Finger Laptop Switcher Switch
         Container(
           margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: currentTheme.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: currentTheme.borderSubtle),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: currentTheme.accentSecondary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.view_carousel_rounded, color: currentTheme.accentSecondary, size: 20),
+                child: Icon(Icons.view_carousel_rounded, color: currentTheme.accentSecondary, size: 18),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -888,22 +1056,21 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                     Text(
                       '3-Finger Laptop App Switcher',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.bold,
                         color: currentTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      'Holds Alt down during horizontal swipe to preview all windows on screen; swipe up for Task View (Win + Tab).',
-                      style: TextStyle(fontSize: 11, color: currentTheme.textSecondary),
+                      'Holds Alt down during horizontal swipe to preview windows.',
+                      style: TextStyle(fontSize: 10.5, color: currentTheme.textSecondary),
                     ),
                   ],
                 ),
               ),
               Switch(
                 value: ThemeController.instance.threeFingerSwitcherEnabled,
-                activeColor: currentTheme.accentSecondary,
+                activeThumbColor: currentTheme.accentSecondary,
                 onChanged: (val) {
                   HapticFeedback.selectionClick();
                   ThemeController.instance.setThreeFingerSwitcher(val);
@@ -913,67 +1080,59 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
           ),
         ),
 
-        // Micro-Movement Sub-Pixel Engine Status
+        // 2-Finger Pinch to Zoom Switch
         Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: currentTheme.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: currentTheme.borderSubtle),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: currentTheme.accentPrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: currentTheme.accentTertiary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.gps_fixed_rounded, color: currentTheme.accentPrimary, size: 20),
+                child: Icon(Icons.zoom_in_rounded, color: currentTheme.accentTertiary, size: 18),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Micro-Movement Sub-Pixel Engine',
+                      '2-Finger Pinch to Zoom',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.bold,
                         color: currentTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      'Accumulates fractional deltas (0.1px - 0.4px) for 120Hz micro-accuracy without dropping frames.',
-                      style: TextStyle(fontSize: 11, color: currentTheme.textSecondary),
+                      'Squeeze / shrink to zoom out, expand to zoom in (Ctrl + Wheel).',
+                      style: TextStyle(fontSize: 10.5, color: currentTheme.textSecondary),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: currentTheme.accentPrimary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'ACTIVE',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: currentTheme.accentPrimary,
-                  ),
-                ),
+              Switch(
+                value: ThemeController.instance.pinchZoomEnabled,
+                activeThumbColor: currentTheme.accentTertiary,
+                onChanged: (val) {
+                  HapticFeedback.selectionClick();
+                  ThemeController.instance.setPinchZoom(val);
+                },
               ),
             ],
           ),
         ),
 
         Text(
-          'QUICK GESTURE GUIDE',
+          'GESTURE REFERENCE',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w800,
@@ -981,48 +1140,267 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
             color: currentTheme.textSecondary,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
 
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: currentTheme.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: currentTheme.borderSubtle),
           ),
           child: Column(
             children: [
-              _buildGestureRow('1-Finger Glide', 'Move Mouse Cursor', currentTheme),
-              _buildGestureRow('1-Finger Tap', 'Left Mouse Click', currentTheme),
+              _buildGestureRow('1-Finger Glide', 'Move Cursor', currentTheme),
+              _buildGestureRow('1-Finger Tap', 'Left Click', currentTheme),
               _buildGestureRow('Double-Tap & Hold', 'Drag Lock / Move Window', currentTheme),
-              _buildGestureRow('2-Finger Tap', 'Right Mouse Click', currentTheme),
+              _buildGestureRow('2-Finger Tap', 'Right Click', currentTheme),
+              _buildGestureRow('2-Finger Pinch / Squeeze', 'Zoom In / Out (Ctrl+Wheel)', currentTheme),
               _buildGestureRow('2-Finger Vertical', 'Smooth 2D Scroll', currentTheme),
-              _buildGestureRow('2-Finger Horizontal', 'Browser Back & Forward', currentTheme),
+              _buildGestureRow('2-Finger Horizontal', 'Browser Back / Forward', currentTheme),
               _buildGestureRow('3-Finger Swipe ↔', 'Laptop App Switcher (Alt+Tab)', currentTheme),
-              _buildGestureRow('3-Finger Swipe ↑', 'Task View / Overview (Win+Tab)', currentTheme),
+              _buildGestureRow('3-Finger Swipe ↑', 'Task View (Win+Tab)', currentTheme),
               _buildGestureRow('3-Finger Swipe ↓', 'Show Desktop (Win+D)', currentTheme),
             ],
           ),
         ),
+        const SizedBox(height: 16),
       ],
     );
   }
 
   Widget _buildGestureRow(String gesture, String action, PhonePadThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             gesture,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textPrimary),
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: theme.textPrimary),
           ),
           Text(
             action,
-            style: TextStyle(fontSize: 12, color: theme.accentPrimary),
+            style: TextStyle(fontSize: 11.5, color: theme.accentPrimary),
           ),
         ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // TAB 4: AMOLED POWER SAVER SETTINGS
+  // =========================================================================
+
+  Widget _buildPowerSaverTab(PhonePadThemeData currentTheme) {
+    return ListenableBuilder(
+      listenable: PowerGovernor.instance,
+      builder: (context, _) {
+        final governor = PowerGovernor.instance;
+
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          children: [
+            Text(
+              'AMOLED POWER CONSERVATION',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: currentTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Master Enable Toggle
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: currentTheme.surfaceCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: currentTheme.borderSubtle),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: currentTheme.accentPrimary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.bolt_rounded, color: currentTheme.accentPrimary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AMOLED Auto-Dimming',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: currentTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Dims OLED screen during idle periods to eliminate battery drain.',
+                          style: TextStyle(fontSize: 10.5, color: currentTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: governor.isEnabled,
+                    activeThumbColor: currentTheme.accentPrimary,
+                    onChanged: (val) {
+                      HapticFeedback.selectionClick();
+                      governor.setEnabled(val);
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            Text(
+              'IDLE SLEEP TIMEOUT',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: currentTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Timeout Selector Pills
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: currentTheme.surfaceCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: currentTheme.borderSubtle),
+              ),
+              child: Row(
+                children: [
+                  _buildTimeoutOption('10s', 10, governor, currentTheme),
+                  _buildTimeoutOption('15s', 15, governor, currentTheme),
+                  _buildTimeoutOption('30s', 30, governor, currentTheme),
+                  _buildTimeoutOption('60s', 60, governor, currentTheme),
+                  _buildTimeoutOption('Never', 0, governor, currentTheme),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // Live Governor Telemetry Card
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: currentTheme.surfaceCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: currentTheme.borderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.touch_app_rounded, size: 16, color: currentTheme.accentPrimary),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Instant 0ms Tap-to-Wake',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: currentTheme.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: governor.isDimmed
+                              ? Colors.amber.withValues(alpha: 0.15)
+                              : currentTheme.accentPrimary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          governor.isDimmed ? 'DIMMED' : 'AWAKE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: governor.isDimmed ? Colors.amber : currentTheme.accentPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'When dimmed, a zero-power touch listener stays active. Any finger contact immediately restores 100% luminance in 0ms without input lag.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: currentTheme.textSecondary.withValues(alpha: 0.85),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTimeoutOption(
+    String label,
+    int seconds,
+    PowerGovernor governor,
+    PhonePadThemeData theme,
+  ) {
+    final isSelected = governor.timeoutSeconds == seconds;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          governor.setTimeoutSeconds(seconds);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.accentPrimary.withValues(alpha: 0.2)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? theme.accentPrimary.withValues(alpha: 0.6)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              color: isSelected ? theme.textPrimary : theme.textSecondary,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -72,8 +72,13 @@ impl<I: InputInjector> SessionHandler<I> {
 
         match packet.opcode {
             Opcode::Move => {
-                let (filtered_dx, filtered_dy) = self.filter.apply_deadzone(packet.dx, packet.dy);
-                let (move_x, move_y) = self.ballistics.process_delta(filtered_dx, filtered_dy);
+                let (fx, fy) = if packet.flags & crate::protocol::FLAG_HIGH_RES != 0 {
+                    (packet.dx as f32 / 8.0, packet.dy as f32 / 8.0)
+                } else {
+                    (packet.dx as f32, packet.dy as f32)
+                };
+                let (filtered_dx, filtered_dy) = self.filter.apply_deadzone_f32(fx, fy);
+                let (move_x, move_y) = self.ballistics.process_delta_f32(filtered_dx, filtered_dy);
                 self.injector.move_relative(move_x, move_y);
             }
             Opcode::TapLeft => {
@@ -97,19 +102,39 @@ impl<I: InputInjector> SessionHandler<I> {
             Opcode::Scroll => {
                 // Safety: Scrolling must NEVER drag, copy, or select text
                 self.fsm.reset(&mut self.injector);
-                let (notches_x, notches_y) = self.filter.process_scroll(packet.dx, packet.dy);
-                if notches_x != 0 || notches_y != 0 {
-                    self.injector.scroll(notches_x, notches_y);
+                let (fx, fy) = if packet.flags & crate::protocol::FLAG_HIGH_RES != 0 {
+                    (packet.dx as f32 / 8.0, packet.dy as f32 / 8.0)
+                } else {
+                    (packet.dx as f32, packet.dy as f32)
+                };
+                let (wheel_x, wheel_y) = self.filter.process_smooth_scroll(fx, fy);
+                if wheel_x != 0 || wheel_y != 0 {
+                    self.injector.scroll_raw(wheel_x, wheel_y);
                 }
             }
             Opcode::DragStart => {
                 log::debug!("Drag start trigger (Left mouse button down)");
                 self.fsm.force_drag_lock();
                 self.injector.mouse_down(crate::input::MouseButton::Left);
+                if packet.dx != 0 || packet.dy != 0 {
+                    let (fx, fy) = if packet.flags & crate::protocol::FLAG_HIGH_RES != 0 {
+                        (packet.dx as f32 / 8.0, packet.dy as f32 / 8.0)
+                    } else {
+                        (packet.dx as f32, packet.dy as f32)
+                    };
+                    let (filtered_dx, filtered_dy) = self.filter.apply_deadzone_f32(fx, fy);
+                    let (move_x, move_y) = self.ballistics.process_delta_f32(filtered_dx, filtered_dy);
+                    self.injector.move_relative(move_x, move_y);
+                }
             }
             Opcode::DragEnd => {
                 log::debug!("Drag end trigger (Left mouse button up)");
                 self.fsm.reset(&mut self.injector);
+            }
+            Opcode::Zoom => {
+                log::debug!("Zoom trigger (Pinch): notches={}", packet.dy);
+                self.fsm.reset(&mut self.injector);
+                self.injector.zoom(packet.dy as i32);
             }
             Opcode::Heartbeat => {
                 log::trace!("Heartbeat received (Flags: {:08b})", packet.flags);

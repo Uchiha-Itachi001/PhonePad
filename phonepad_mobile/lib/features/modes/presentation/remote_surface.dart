@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/network/transport.dart';
@@ -6,7 +7,7 @@ import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
 import '../../../core/theme/theme_controller.dart';
 
-/// Presentation & Media Remote surface with responsive orientation and glassmorphic styling.
+/// Ultra-modern tactile studio remote with circular media dial and slide deck.
 class RemoteSurface extends StatefulWidget {
   final ITransport transport;
   final VoidCallback onActivity;
@@ -22,18 +23,37 @@ class RemoteSurface extends StatefulWidget {
 }
 
 class _RemoteSurfaceState extends State<RemoteSurface> {
-  String _lastActionLabel = 'REMOTE READY';
+  String _activeFeedback = 'READY';
+  MediaKey? _lastPressedKey;
+  Timer? _feedbackTimer;
 
-  void _onKeyPress(MediaKey key, String label) {
+  void _triggerKey(MediaKey key, String label) {
     widget.onActivity();
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     setState(() {
-      _lastActionLabel = label;
+      _activeFeedback = label;
+      _lastPressedKey = key;
     });
+
     widget.transport.sendPacket(PhonePadPacket(
       opcode: Opcode.media,
       dx: key.code,
     ));
+
+    _feedbackTimer?.cancel();
+    _feedbackTimer = Timer(const Duration(milliseconds: 280), () {
+      if (mounted && _lastPressedKey == key) {
+        setState(() {
+          _lastPressedKey = null;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _feedbackTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -45,22 +65,19 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
 
         return Container(
           color: theme.backgroundPrimary,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: OrientationBuilder(
             builder: (context, orientation) {
               final isLandscape = orientation == Orientation.landscape;
 
               return Column(
                 children: [
-                  // Top Deck Status Bar
-                  _buildHeader(theme),
-                  const SizedBox(height: 10),
-
-                  // Main Content
+                  _buildStatusHeader(theme),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: isLandscape
-                        ? _buildLandscapeContent(theme)
-                        : _buildPortraitContent(theme),
+                        ? _buildLandscapeLayout(theme)
+                        : _buildPortraitLayout(theme),
                   ),
                 ],
               );
@@ -71,12 +88,13 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     );
   }
 
-  Widget _buildHeader(PhonePadThemeData theme) {
+  /// Telemetry status pill at the top of the remote deck
+  Widget _buildStatusHeader(PhonePadThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.surfaceCard.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(12),
+        color: theme.surfaceCard.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: theme.borderSubtle),
       ),
       child: Row(
@@ -85,44 +103,54 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
           Row(
             children: [
               Container(
-                width: 6,
-                height: 6,
+                width: 7,
+                height: 7,
                 decoration: BoxDecoration(
-                  color: theme.accentSecondary,
+                  color: theme.accentPrimary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: theme.accentSecondary.withValues(alpha: 0.8),
-                      blurRadius: 4,
+                      color: theme.accentPrimary.withValues(alpha: 0.7),
+                      blurRadius: 6,
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                'STUDIO REMOTE',
+                'STUDIO CONTROLLER',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
+                  letterSpacing: 1.4,
                   color: theme.textSecondary,
                 ),
               ),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             decoration: BoxDecoration(
-              color: theme.accentSecondary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
+              color: _lastPressedKey != null
+                  ? theme.accentPrimary.withValues(alpha: 0.25)
+                  : theme.surfaceCard,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _lastPressedKey != null
+                    ? theme.accentPrimary.withValues(alpha: 0.6)
+                    : Colors.transparent,
+              ),
             ),
             child: Text(
-              _lastActionLabel,
+              _activeFeedback,
               style: TextStyle(
                 fontSize: 10.5,
-                fontWeight: FontWeight.bold,
-                color: theme.accentSecondary,
-                letterSpacing: 0.5,
+                fontWeight: FontWeight.w800,
+                color: _lastPressedKey != null
+                    ? theme.accentPrimary
+                    : theme.textSecondary,
+                letterSpacing: 0.8,
               ),
             ),
           ),
@@ -131,210 +159,178 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     );
   }
 
-  Widget _buildPortraitContent(PhonePadThemeData theme) {
-    return Column(
-      children: [
-        // Section: Presentation Slide Controller
-        _buildSectionHeader('PRESENTATION SLIDES', Icons.slideshow_rounded, theme),
-        const SizedBox(height: 8),
-        Expanded(
-          flex: 3,
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildSlideButton(
-                  keyId: 'prev_slide_btn',
-                  label: 'PREV',
-                  sublabel: 'PAGE UP',
-                  icon: Icons.arrow_back_rounded,
-                  theme: theme,
-                  isPrimary: false,
-                  onTap: () => _onKeyPress(MediaKey.prevSlide, 'PREV SLIDE'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSlideButton(
-                  keyId: 'next_slide_btn',
-                  label: 'NEXT',
-                  sublabel: 'PAGE DOWN',
-                  icon: Icons.arrow_forward_rounded,
-                  theme: theme,
-                  isPrimary: true,
-                  onTap: () => _onKeyPress(MediaKey.nextSlide, 'NEXT SLIDE'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Section: Media & Audio Controls
-        _buildSectionHeader('MEDIA & VOLUME', Icons.music_note_rounded, theme),
-        const SizedBox(height: 8),
-        Expanded(
-          flex: 2,
-          child: Row(
-            children: [
-              // Hero Play/Pause Card
-              Expanded(
-                flex: 3,
-                child: _buildHeroPlayButton(theme),
-              ),
-              const SizedBox(width: 10),
-
-              // Volume Column (Vol Up & Vol Down)
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: _buildActionIconButton(
-                        keyId: 'vol_up_btn',
-                        icon: Icons.volume_up_rounded,
-                        tooltip: 'VOL +',
-                        theme: theme,
-                        onTap: () => _onKeyPress(MediaKey.volumeUp, 'VOL +'),
+  /// Clean portrait layout: Circular D-Pad Dial + Slide triggers + Quick action dock
+  Widget _buildPortraitLayout(PhonePadThemeData theme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  // Primary Presentation Hero Triggers (Prev & Next Slide)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTactileButton(
+                          key: const Key('prev_slide_btn'),
+                          title: 'PREV',
+                          subtitle: 'PAGE UP',
+                          icon: Icons.skip_previous_rounded,
+                          theme: theme,
+                          isPrimary: false,
+                          onTap: () => _triggerKey(MediaKey.prevSlide, 'PREV SLIDE'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Expanded(
-                      child: _buildActionIconButton(
-                        keyId: 'vol_down_btn',
-                        icon: Icons.volume_down_rounded,
-                        tooltip: 'VOL -',
-                        theme: theme,
-                        onTap: () => _onKeyPress(MediaKey.volumeDown, 'VOL -'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTactileButton(
+                          key: const Key('next_slide_btn'),
+                          title: 'NEXT',
+                          subtitle: 'PAGE DOWN',
+                          icon: Icons.skip_next_rounded,
+                          theme: theme,
+                          isPrimary: true,
+                          onTap: () => _triggerKey(MediaKey.nextSlide, 'NEXT SLIDE'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-              // Mute Button
-              Expanded(
-                flex: 2,
-                child: _buildActionIconButton(
-                  keyId: 'mute_btn',
-                  icon: Icons.volume_off_rounded,
-                  tooltip: 'MUTE',
-                  theme: theme,
-                  isDestructive: true,
-                  onTap: () => _onKeyPress(MediaKey.mute, 'MUTE'),
-                ),
+                  // Centerpiece: Circular Media Wheel Dial
+                  Expanded(
+                    child: Center(
+                      child: _buildCircularMediaWheel(theme, size: 240),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Bottom Quick Utility Deck (Mute, Nav Back, Nav Forward)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildQuickActionPill(
+                          title: 'MUTE',
+                          icon: Icons.volume_off_rounded,
+                          theme: theme,
+                          isDestructive: true,
+                          onTap: () => _triggerKey(MediaKey.mute, 'AUDIO MUTE'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildQuickActionPill(
+                          title: 'BACK',
+                          icon: Icons.arrow_back_rounded,
+                          theme: theme,
+                          onTap: () => _triggerKey(MediaKey.navBack, 'BROWSER BACK'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildQuickActionPill(
+                          title: 'FORWARD',
+                          icon: Icons.arrow_forward_rounded,
+                          theme: theme,
+                          onTap: () => _triggerKey(MediaKey.navForward, 'BROWSER FWD'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 
-  Widget _buildLandscapeContent(PhonePadThemeData theme) {
+  /// Compact side-by-side landscape layout
+  Widget _buildLandscapeLayout(PhonePadThemeData theme) {
     return Row(
       children: [
-        // Left Column: Presentation Slides
+        // Left Column: Circular Controller Wheel
         Expanded(
           flex: 5,
+          child: Center(
+            child: _buildCircularMediaWheel(theme, size: 190),
+          ),
+        ),
+        const SizedBox(width: 16),
+
+        // Right Column: Slide Presentation Cards & Utility Buttons
+        Expanded(
+          flex: 6,
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildSectionHeader('PRESENTATION SLIDES', Icons.slideshow_rounded, theme),
-              const SizedBox(height: 6),
               Expanded(
                 child: Row(
                   children: [
                     Expanded(
-                      child: _buildSlideButton(
-                        keyId: 'prev_slide_btn',
-                        label: 'PREV',
-                        sublabel: 'PAGE UP',
-                        icon: Icons.arrow_back_rounded,
+                      child: _buildTactileButton(
+                        key: const Key('prev_slide_btn'),
+                        title: 'PREV',
+                        subtitle: 'PAGE UP',
+                        icon: Icons.skip_previous_rounded,
                         theme: theme,
                         isPrimary: false,
-                        onTap: () => _onKeyPress(MediaKey.prevSlide, 'PREV SLIDE'),
+                        onTap: () => _triggerKey(MediaKey.prevSlide, 'PREV SLIDE'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _buildSlideButton(
-                        keyId: 'next_slide_btn',
-                        label: 'NEXT',
-                        sublabel: 'PAGE DOWN',
-                        icon: Icons.arrow_forward_rounded,
+                      child: _buildTactileButton(
+                        key: const Key('next_slide_btn'),
+                        title: 'NEXT',
+                        subtitle: 'PAGE DOWN',
+                        icon: Icons.skip_next_rounded,
                         theme: theme,
                         isPrimary: true,
-                        onTap: () => _onKeyPress(MediaKey.nextSlide, 'NEXT SLIDE'),
+                        onTap: () => _triggerKey(MediaKey.nextSlide, 'NEXT SLIDE'),
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 14),
-
-        // Right Column: Media Playback & Volume
-        Expanded(
-          flex: 5,
-          child: Column(
-            children: [
-              _buildSectionHeader('MEDIA & VOLUME', Icons.music_note_rounded, theme),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Row(
-                  children: [
-                    // Play/Pause
-                    Expanded(
-                      flex: 3,
-                      child: _buildHeroPlayButton(theme),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickActionPill(
+                      title: 'MUTE',
+                      icon: Icons.volume_off_rounded,
+                      theme: theme,
+                      isDestructive: true,
+                      onTap: () => _triggerKey(MediaKey.mute, 'AUDIO MUTE'),
                     ),
-                    const SizedBox(width: 8),
-
-                    // Volume Controls
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: _buildActionIconButton(
-                              keyId: 'vol_up_btn',
-                              icon: Icons.volume_up_rounded,
-                              tooltip: 'VOL +',
-                              theme: theme,
-                              onTap: () => _onKeyPress(MediaKey.volumeUp, 'VOL +'),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Expanded(
-                            child: _buildActionIconButton(
-                              keyId: 'vol_down_btn',
-                              icon: Icons.volume_down_rounded,
-                              tooltip: 'VOL -',
-                              theme: theme,
-                              onTap: () => _onKeyPress(MediaKey.volumeDown, 'VOL -'),
-                            ),
-                          ),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildQuickActionPill(
+                      title: 'BACK',
+                      icon: Icons.arrow_back_rounded,
+                      theme: theme,
+                      onTap: () => _triggerKey(MediaKey.navBack, 'BROWSER BACK'),
                     ),
-                    const SizedBox(width: 8),
-
-                    // Mute
-                    Expanded(
-                      flex: 2,
-                      child: _buildActionIconButton(
-                        keyId: 'mute_btn',
-                        icon: Icons.volume_off_rounded,
-                        tooltip: 'MUTE',
-                        theme: theme,
-                        isDestructive: true,
-                        onTap: () => _onKeyPress(MediaKey.mute, 'MUTE'),
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildQuickActionPill(
+                      title: 'FORWARD',
+                      icon: Icons.arrow_forward_rounded,
+                      theme: theme,
+                      onTap: () => _triggerKey(MediaKey.navForward, 'BROWSER FWD'),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -343,28 +339,150 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon, PhonePadThemeData theme) {
-    return Row(
-      children: [
-        Icon(icon, size: 12, color: theme.accentSecondary),
-        const SizedBox(width: 6),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 9.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: theme.textSecondary.withValues(alpha: 0.7),
+  /// Circular tactile D-Pad Jog Wheel for Media & Slides
+  Widget _buildCircularMediaWheel(PhonePadThemeData theme, {required double size}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.surfaceCard.withValues(alpha: 0.8),
+        border: Border.all(color: theme.borderSubtle, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 20,
+            spreadRadius: 2,
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Top: Volume Up
+          Positioned(
+            top: 10,
+            child: _buildWheelDirectionButton(
+              key: const Key('vol_up_btn'),
+              icon: Icons.volume_up_rounded,
+              label: 'VOL +',
+              theme: theme,
+              onTap: () => _triggerKey(MediaKey.volumeUp, 'VOLUME +'),
+            ),
+          ),
+
+          // Bottom: Volume Down
+          Positioned(
+            bottom: 10,
+            child: _buildWheelDirectionButton(
+              key: const Key('vol_down_btn'),
+              icon: Icons.volume_down_rounded,
+              label: 'VOL -',
+              theme: theme,
+              onTap: () => _triggerKey(MediaKey.volumeDown, 'VOLUME -'),
+            ),
+          ),
+
+          // Left: Prev Track / Slide
+          Positioned(
+            left: 10,
+            child: _buildWheelDirectionButton(
+              icon: Icons.fast_rewind_rounded,
+              label: 'PREV',
+              theme: theme,
+              onTap: () => _triggerKey(MediaKey.prevSlide, 'PREV TRACK'),
+            ),
+          ),
+
+          // Right: Next Track / Slide
+          Positioned(
+            right: 10,
+            child: _buildWheelDirectionButton(
+              icon: Icons.fast_forward_rounded,
+              label: 'NEXT',
+              theme: theme,
+              onTap: () => _triggerKey(MediaKey.nextSlide, 'NEXT TRACK'),
+            ),
+          ),
+
+          // Center: Play / Pause Hero Button
+          GestureDetector(
+            key: const Key('play_pause_btn'),
+            onTap: () => _triggerKey(MediaKey.playPause, 'PLAY / PAUSE'),
+            child: Container(
+              width: size * 0.44,
+              height: size * 0.44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    theme.accentPrimary.withValues(alpha: 0.95),
+                    theme.accentPrimary.withValues(alpha: 0.75),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.accentPrimary.withValues(alpha: 0.4),
+                    blurRadius: 14,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.play_arrow_rounded,
+                    size: 30,
+                    color: Colors.black,
+                  ),
+                  Text(
+                    'Play / Pause',
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildSlideButton({
-    required String keyId,
+  Widget _buildWheelDirectionButton({
+    Key? key,
+    required IconData icon,
     required String label,
-    required String sublabel,
+    required PhonePadThemeData theme,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: theme.backgroundPrimary.withValues(alpha: 0.45),
+        ),
+        child: Icon(
+          icon,
+          size: 26,
+          color: theme.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTactileButton({
+    Key? key,
+    required String title,
+    required String subtitle,
     required IconData icon,
     required PhonePadThemeData theme,
     required bool isPrimary,
@@ -372,184 +490,106 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   }) {
     final accent = isPrimary ? theme.accentPrimary : theme.accentSecondary;
 
-    return Material(
-      key: Key(keyId),
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        splashColor: accent.withValues(alpha: 0.3),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isPrimary
-                  ? accent.withValues(alpha: 0.5)
-                  : theme.borderSubtle,
-              width: 1.4,
-            ),
-            boxShadow: [
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.surfaceCard.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: accent.withValues(alpha: isPrimary ? 0.45 : 0.25),
+            width: 1.5,
+          ),
+          boxShadow: [
+            if (isPrimary)
               BoxShadow(
-                color: isPrimary
-                    ? accent.withValues(alpha: 0.15)
-                    : Colors.black.withValues(alpha: 0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: accent.withValues(alpha: 0.12),
+                blurRadius: 16,
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 26, color: accent),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                  color: theme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                sublabel,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.8,
-                  color: theme.textSecondary.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeroPlayButton(PhonePadThemeData theme) {
-    return Material(
-      key: const Key('play_pause_btn'),
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        splashColor: theme.accentPrimary.withValues(alpha: 0.3),
-        onTap: () => _onKeyPress(MediaKey.playPause, 'PLAY / PAUSE'),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: theme.accentPrimary.withValues(alpha: 0.4),
-              width: 1.4,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: theme.accentPrimary.withValues(alpha: 0.12),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.accentPrimary,
-                      theme.accentPrimary.withValues(alpha: 0.8),
-                    ],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.accentPrimary.withValues(alpha: 0.4),
-                      blurRadius: 10,
+              child: Icon(icon, color: accent, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: theme.textPrimary,
+                      letterSpacing: 0.5,
                     ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  size: 24,
-                  color: theme.isDark ? Colors.black : Colors.white,
-                ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: theme.textSecondary,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Play / Pause',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: theme.textPrimary,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildActionIconButton({
-    required String keyId,
+  Widget _buildQuickActionPill({
+    required String title,
     required IconData icon,
-    required String tooltip,
     required PhonePadThemeData theme,
     bool isDestructive = false,
     required VoidCallback onTap,
   }) {
-    final accent = isDestructive
-        ? const Color(0xFFEF4444)
-        : theme.accentSecondary;
+    final color = isDestructive ? const Color(0xFFEF4444) : theme.textPrimary;
 
-    return Material(
-      key: Key(keyId),
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        splashColor: accent.withValues(alpha: 0.3),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDestructive
-                  ? accent.withValues(alpha: 0.4)
-                  : theme.borderSubtle,
-              width: 1.0,
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: theme.surfaceCard.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDestructive
+                ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                : theme.borderSubtle,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 20, color: accent),
-              const SizedBox(height: 2),
-              Text(
-                tooltip,
-                style: TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                  color: accent,
-                ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.5,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

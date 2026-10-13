@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import '../protocol/handshake.dart';
 import '../protocol/packet.dart';
 import 'transport.dart';
@@ -73,12 +74,14 @@ class TcpTransport implements ITransport {
     }
   }
 
+  final Uint8List _packetBuffer = Uint8List(PhonePadPacket.packetSize);
+
   @override
   void sendPacket(PhonePadPacket packet) {
     if (_status == ConnectionStatus.connected && _socket != null) {
       try {
-        _socket!.add(packet.toBytes());
-        _socket!.flush();
+        packet.writeTo(_packetBuffer);
+        _socket!.add(_packetBuffer);
       } catch (e) {
         _setStatus(ConnectionStatus.disconnected);
       }

@@ -13,6 +13,8 @@ pub struct DummyInjector {
     pub mouse_up_count: usize,
     pub scroll_x: i32,
     pub scroll_y: i32,
+    pub scroll_raw_x: i32,
+    pub scroll_raw_y: i32,
     pub task_view_count: usize,
     pub show_desktop_count: usize,
     pub app_switch_next_count: usize,
@@ -25,6 +27,7 @@ pub struct DummyInjector {
     pub nav_forward_count: usize,
     pub numpad_keys: Vec<NumpadKey>,
     pub media_keys: Vec<MediaKey>,
+    pub zoom_notches: i32,
 }
 
 impl DummyInjector {
@@ -62,6 +65,15 @@ impl InputInjector for DummyInjector {
     fn scroll(&mut self, dx: i32, dy: i32) {
         self.scroll_x += dx;
         self.scroll_y += dy;
+        self.scroll_raw_x += dx * crate::input::WHEEL_DELTA;
+        self.scroll_raw_y += dy * crate::input::WHEEL_DELTA;
+    }
+
+    fn scroll_raw(&mut self, dx: i32, dy: i32) {
+        self.scroll_raw_x += dx;
+        self.scroll_raw_y += dy;
+        self.scroll_x += dx / crate::input::WHEEL_DELTA;
+        self.scroll_y += dy / crate::input::WHEEL_DELTA;
     }
 
     fn show_task_view(&mut self) {
@@ -122,5 +134,9 @@ impl InputInjector for DummyInjector {
             MediaKey::NavForward => self.nav_forward(),
             _ => self.media_keys.push(key),
         }
+    }
+
+    fn zoom(&mut self, notches: i32) {
+        self.zoom_notches += notches;
     }
 }

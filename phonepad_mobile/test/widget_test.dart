@@ -347,4 +347,133 @@ void main() {
     expect(navPacket!.opcode, equals(Opcode.media));
     expect(navPacket.dx, equals(MediaKey.navBack.code));
   });
+
+  test('TouchDetector detects 2-finger tap as Right Click without trailing left click', () {
+    final detector = TouchDetector();
+
+    // 2 fingers down
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(150.0, 150.0)));
+    detector.onPointerDown(const PointerDownEvent(pointer: 2, position: Offset(200.0, 150.0)));
+
+    // Finger 1 lifts first
+    final rightClick = detector.onPointerUp(const PointerUpEvent(pointer: 1, position: Offset(150.0, 150.0)));
+    expect(rightClick, isNotNull);
+    expect(rightClick!.opcode, equals(Opcode.tapRight));
+
+    // Finger 2 lifts ~15ms later: MUST NOT emit tapLeft!
+    final secondLift = detector.onPointerUp(const PointerUpEvent(pointer: 2, position: Offset(200.0, 150.0)));
+    // Should either be lift reset packet (move with flags 0) or null, NEVER tapLeft
+    if (secondLift != null) {
+      expect(secondLift.opcode, isNot(equals(Opcode.tapLeft)));
+    }
+  });
+
+  test('TouchDetector dispatches pinch-to-zoom for squeeze (shrink) and spread (expand)', () {
+    final detector = TouchDetector();
+    detector.twoFingerNavEnabled = false; // Isolate pinch testing
+    detector.pinchZoomEnabled = true;
+
+    // 2 fingers down at distance 100px
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 200.0)));
+    detector.onPointerDown(const PointerDownEvent(pointer: 2, position: Offset(200.0, 200.0)));
+
+    // Squeeze (shrink) fingers together by moving finger 2 closer to finger 1 by 20px (span drops from 100 to 80)
+    final zoomOut = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 2,
+      position: Offset(180.0, 200.0),
+      delta: Offset(-20.0, 0.0),
+    ));
+    expect(zoomOut, isNotNull);
+    expect(zoomOut!.opcode, equals(Opcode.zoom));
+    expect(zoomOut.dy, equals(-1)); // Zoom Out
+
+    // Spread (expand) fingers apart by moving finger 2 away by 20px (span increases from 80 to 100)
+    final zoomIn = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 2,
+      position: Offset(200.0, 200.0),
+      delta: Offset(20.0, 0.0),
+    ));
+    expect(zoomIn, isNotNull);
+    expect(zoomIn!.opcode, equals(Opcode.zoom));
+    expect(zoomIn.dy, equals(1)); // Zoom In
+  });
+
+  test('TouchDetector initiates DragStart on tap-then-tap-and-move with deltas', () {
+    final detector = TouchDetector();
+
+    // First quick tap
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 100.0)));
+    final tap1 = detector.onPointerUp(const PointerUpEvent(pointer: 1, position: Offset(100.0, 100.0)));
+    expect(tap1!.opcode, equals(Opcode.tapLeft));
+
+    // Second tap down within 350ms at same spot -> initiates drag lock
+    final downPacket = detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(101.0, 101.0)));
+    expect(detector.isDragLocked, isTrue);
+    // Does NOT dispatch dragStart prematurely at (0, 0)
+    expect(downPacket, isNull);
+
+    // Now move the pointer by 15px -> dispatches dragStart WITH movement deltas for window moving
+    final dragMove = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(116.0, 101.0),
+      delta: Offset(15.0, 0.0),
+    ));
+    expect(dragMove, isNotNull);
+    expect(dragMove!.opcode, equals(Opcode.dragStart));
+    expect(dragMove.dx, equals(15));
+    expect(dragMove.dy, equals(0));
+
+    // Release finger -> dispatches dragEnd
+    final dragEnd = detector.onPointerUp(const PointerUpEvent(pointer: 1, position: Offset(116.0, 101.0)));
+    expect(dragEnd, isNotNull);
+    expect(dragEnd!.opcode, equals(Opcode.dragEnd));
+    expect(detector.isDragLocked, isFalse);
+  });
+
+  test('TouchDetector 2-finger scroll accumulates sub-pixel movements smoothly', () {
+    final detector = TouchDetector();
+    detector.twoFingerNavEnabled = false;
+    detector.pinchZoomEnabled = false;
+
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 100.0)));
+    detector.onPointerDown(const PointerDownEvent(pointer: 2, position: Offset(100.0, 150.0)));
+
+    // Micro scroll step 1: 0.3px delta -> held in scroll accumulator, returns null
+    final s1 = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.0, 100.3),
+      delta: Offset(0.0, 0.3),
+    ));
+    expect(s1, isNull);
+
+    // Micro scroll step 2: 0.4px delta -> accumulated 0.7px -> dispatches 1px scroll packet!
+    final s2 = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.0, 100.7),
+      delta: Offset(0.0, 0.4),
+    ));
+    expect(s2, isNotNull);
+    expect(s2!.opcode, equals(Opcode.scroll));
+    expect(s2.dy, equals(1));
+  });
+
+  test('TouchDetector highResMode streams 8x sub-pixel precision with flagHighRes', () {
+    final detector = TouchDetector();
+    detector.highResMode = true;
+
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 100.0)));
+
+    // Micro move: 0.25px delta -> in highResMode, 0.25 * 8 = 2 units! Dispatches immediately!
+    final p1 = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.25, 100.0),
+      delta: Offset(0.25, 0.0),
+    ));
+    expect(p1, isNotNull);
+    expect(p1!.opcode, equals(Opcode.move));
+    expect(p1.dx, equals(2));
+    expect(p1.isHighRes, isTrue);
+  });
 }
+
+
