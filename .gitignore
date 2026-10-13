@@ -1,0 +1,52 @@
+# AI Agent Tooling & Isolated Workspace State
+.agents/
+skills/
+MEMORY.md
+ARCHITECTURE.md
+AGENTS.md
+GEMINI.md
+skills.json
+
+# Dependencies & Build Artifacts
+node_modules/
+dist/
+target/
+**/target/
+build/
+**/build/
+.dart_tool/
+**/.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# Binary Executables & App Packages
+*.exe
+*.apk
+*.aab
+*.dll
+*.pdb
+*.so
+*.dylib
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.key
+*.keystore
+*.jks
+*.p12
+google-services.json
+GoogleService-Info.plist
+
+# Logs & Temporary Files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.iml
