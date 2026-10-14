@@ -4,9 +4,12 @@ import '../../../core/network/transport.dart';
 import '../../../core/protocol/keys.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
+import '../../../core/theme/liquid_glass_container.dart';
+import '../../../core/theme/spring_bounce_tap.dart';
 import '../../../core/theme/theme_controller.dart';
+import 'keyboard_deck.dart';
 
-/// Virtual 10-key numeric keypad with glassmorphic tactile keys and responsive orientation.
+/// Virtual 10-key numeric keypad and QWERTY keyboard with glassmorphic tactile keys.
 class NumpadSurface extends StatefulWidget {
   final ITransport transport;
   final VoidCallback onActivity;
@@ -23,6 +26,7 @@ class NumpadSurface extends StatefulWidget {
 
 class _NumpadSurfaceState extends State<NumpadSurface> {
   String _lastPressedKey = 'READY';
+  bool _isKeyboardMode = false;
 
   void _onKeyPress(NumpadKey key) {
     widget.onActivity();
@@ -66,6 +70,22 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
   }
 
   Widget _buildPortraitLayout(PhonePadThemeData theme) {
+    if (_isKeyboardMode) {
+      return Column(
+        children: [
+          _buildTelemetryHeader(theme),
+          const SizedBox(height: 8),
+          Expanded(
+            child: KeyboardDeck(
+              transport: widget.transport,
+              onActivity: widget.onActivity,
+              onKeyNameChanged: (name) => setState(() => _lastPressedKey = name),
+            ),
+          ),
+        ],
+      );
+    }
+
     const gridKeys = [
       [NumpadKey.num7, NumpadKey.num8, NumpadKey.num9, NumpadKey.divide],
       [NumpadKey.num4, NumpadKey.num5, NumpadKey.num6, NumpadKey.multiply],
@@ -113,6 +133,22 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
   }
 
   Widget _buildLandscapeLayout(PhonePadThemeData theme) {
+    if (_isKeyboardMode) {
+      return Column(
+        children: [
+          _buildTelemetryHeader(theme),
+          const SizedBox(height: 6),
+          Expanded(
+            child: KeyboardDeck(
+              transport: widget.transport,
+              onActivity: widget.onActivity,
+              onKeyNameChanged: (name) => setState(() => _lastPressedKey = name),
+            ),
+          ),
+        ],
+      );
+    }
+
     const leftKeys = [
       [NumpadKey.num7, NumpadKey.num8, NumpadKey.num9],
       [NumpadKey.num4, NumpadKey.num5, NumpadKey.num6],
@@ -186,7 +222,7 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
 
   Widget _buildTelemetryHeader(PhonePadThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: theme.surfaceCard.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(12),
@@ -195,35 +231,49 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: theme.accentPrimary,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.accentPrimary.withValues(alpha: 0.8),
-                      blurRadius: 4,
-                    ),
-                  ],
+          // Segmented Deck Switcher (123 NUMPAD vs KEYBOARD)
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: theme.surfaceCard.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.borderSubtle),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildModeTab(
+                  label: '123',
+                  fullLabel: '123 NUMPAD',
+                  icon: Icons.dialpad_rounded,
+                  isSelected: !_isKeyboardMode,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _isKeyboardMode = false;
+                      _lastPressedKey = 'NUMPAD';
+                    });
+                  },
+                  theme: theme,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'NUMPAD DECK',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                  color: theme.textSecondary,
+                _buildModeTab(
+                  label: 'QWERTY',
+                  fullLabel: 'KEYBOARD',
+                  icon: Icons.keyboard_rounded,
+                  isSelected: _isKeyboardMode,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _isKeyboardMode = true;
+                      _lastPressedKey = 'KEYBOARD';
+                    });
+                  },
+                  theme: theme,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           Flexible(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -249,6 +299,58 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
     );
   }
 
+  Widget _buildModeTab({
+    required String label,
+    required String fullLabel,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required PhonePadThemeData theme,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.accentPrimary.withValues(alpha: 0.22)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected
+                  ? theme.accentPrimary.withValues(alpha: 0.5)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 13,
+                color: isSelected ? theme.accentPrimary : theme.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                fullLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: isSelected ? theme.accentPrimary : theme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNumpadButton(NumpadKey key, PhonePadThemeData theme) {
     final isOperator = key == NumpadKey.divide ||
         key == NumpadKey.multiply ||
@@ -257,45 +359,41 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
         key == NumpadKey.backspace;
 
     final bgColor = isOperator
-        ? theme.accentSecondary.withValues(alpha: 0.12)
-        : theme.surfaceCard.withValues(alpha: 0.95);
+        ? theme.accentSecondary.withValues(alpha: 0.14)
+        : theme.surfaceCard.withValues(alpha: 0.88);
 
     final borderColor = isOperator
-        ? theme.accentSecondary.withValues(alpha: 0.35)
-        : theme.borderSubtle;
+        ? theme.accentSecondary.withValues(alpha: 0.45)
+        : theme.borderSubtle.withValues(alpha: 0.8);
 
     final textColor = isOperator
         ? theme.accentSecondary
         : theme.textPrimary;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SpringBounceTap(
+      onTap: () => _onKeyPress(key),
+      pressedScale: 0.92,
+      bounceOvershoot: 1.06,
+      child: LiquidGlassContainer(
+        blur: 14,
         borderRadius: BorderRadius.circular(16),
-        splashColor: theme.accentPrimary.withValues(alpha: 0.25),
-        highlightColor: theme.accentPrimary.withValues(alpha: 0.12),
-        onTap: () => _onKeyPress(key),
-        child: Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor, width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        backgroundColor: bgColor,
+        borderColor: borderColor,
+        borderWidth: 1.1,
+        shadows: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          child: Center(
-            child: Text(
-              key.label,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: textColor,
-              ),
+        ],
+        child: Center(
+          child: Text(
+            key.label,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: textColor,
             ),
           ),
         ),
@@ -304,52 +402,47 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
   }
 
   Widget _buildEnterButton(PhonePadThemeData theme) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return SpringBounceTap(
+      onTap: () => _onKeyPress(NumpadKey.enter),
+      pressedScale: 0.94,
+      bounceOvershoot: 1.05,
+      child: LiquidGlassContainer(
+        blur: 16,
         borderRadius: BorderRadius.circular(18),
-        onTap: () => _onKeyPress(NumpadKey.enter),
-        splashColor: Colors.white.withValues(alpha: 0.3),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                theme.accentPrimary,
-                theme.accentPrimary.withValues(alpha: 0.85),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: theme.accentPrimary.withValues(alpha: 0.4),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        backgroundColor: theme.accentPrimary.withValues(alpha: 0.95),
+        borderGradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.5),
+            theme.accentPrimary.withValues(alpha: 0.7),
+          ],
+        ),
+        shadows: [
+          BoxShadow(
+            color: theme.accentPrimary.withValues(alpha: 0.4),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
-          child: Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.keyboard_return_rounded,
-                  size: 18,
+        ],
+        child: Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.keyboard_return_rounded,
+                size: 18,
+                color: theme.isDark ? Colors.black : Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'ENTER',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
                   color: theme.isDark ? Colors.black : Colors.white,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'ENTER',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                    color: theme.isDark ? Colors.black : Colors.white,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

@@ -1,15 +1,19 @@
 //! Windows-specific input injector using Win32 SendInput API.
 
-use super::traits::{InputInjector, MediaKey, MouseButton, NumpadKey};
+use super::traits::{
+    InputInjector, MediaKey, MouseButton, NumpadKey, ShortcutKey, SpecialKey,
+    KEY_TYPE_SHORTCUT, KEY_TYPE_SPECIAL, KEY_TYPE_UNICODE,
+};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP,
-    MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
-    MOUSEEVENTF_WHEEL, MOUSEINPUT, VK_ADD, VK_BACK, VK_D, VK_DECIMAL, VK_DIVIDE, VK_LWIN,
+    KEYEVENTF_UNICODE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, VK_ADD, VK_BACK, VK_CONTROL, VK_D,
+    VK_DECIMAL, VK_DELETE, VK_DIVIDE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_LEFT, VK_LWIN,
     VK_MEDIA_PLAY_PAUSE, VK_MENU, VK_MULTIPLY, VK_NEXT, VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2,
     VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9,
-    VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SUBTRACT, VK_TAB, VK_VOLUME_DOWN, VK_VOLUME_MUTE,
-    VK_VOLUME_UP, VK_LEFT, VK_CONTROL,
+    VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_SUBTRACT, VK_TAB, VK_UP,
+    VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP, VkKeyScanW,
 };
 
 const WHEEL_DELTA: i32 = 120;
@@ -19,7 +23,25 @@ pub struct WindowsInjector;
 
 impl WindowsInjector {
     pub fn new() -> Self {
+        Self::ensure_attached_to_input_desktop();
         Self
+    }
+
+    pub fn ensure_attached_to_input_desktop() {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn OpenInputDesktop(dwflags: u32, finherit: i32, dwdesiredaccess: u32) -> *mut core::ffi::c_void;
+            fn SetThreadDesktop(hdesktop: *mut core::ffi::c_void) -> i32;
+            fn CloseDesktop(hdesktop: *mut core::ffi::c_void) -> i32;
+        }
+        unsafe {
+            const DESKTOP_ALL: u32 = 0x01FF;
+            let desk = OpenInputDesktop(0, 0, DESKTOP_ALL);
+            if !desk.is_null() {
+                SetThreadDesktop(desk);
+                CloseDesktop(desk);
+            }
+        }
     }
 
     fn send_mouse_input(flags: u32, dx: i32, dy: i32, mouse_data: u32) {
@@ -38,9 +60,13 @@ impl WindowsInjector {
                 Anonymous: INPUT_0 { mi: mouse_input },
             };
 
-            let result = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+            let mut result = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
             if result == 0 {
-                log::warn!("Win32 SendInput returned 0 (failed to inject event)");
+                Self::ensure_attached_to_input_desktop();
+                result = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+                if result == 0 {
+                    log::warn!("Win32 SendInput returned 0 (failed to inject event)");
+                }
             }
         }
     }
@@ -60,7 +86,14 @@ impl WindowsInjector {
                 Anonymous: INPUT_0 { ki: kb_input },
             };
 
-            SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+            let mut result = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+            if result == 0 {
+                Self::ensure_attached_to_input_desktop();
+                result = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+                if result == 0 {
+                    log::warn!("Win32 SendInput key returned 0 (failed to inject key)");
+                }
+            }
         }
     }
 
@@ -77,7 +110,67 @@ impl WindowsInjector {
 
     fn tap_single_key(vk: u16) {
         Self::send_key(vk, false);
+        std::thread::sleep(std::time::Duration::from_millis(4));
         Self::send_key(vk, true);
+    }
+
+    fn send_unicode_char(code: u16) {
+        // First try translating Unicode char to virtual key for native Windows app compatibility
+        let vkey_scan = unsafe { VkKeyScanW(code) };
+        if vkey_scan != -1 {
+            let vk = (vkey_scan & 0xFF) as u16;
+            let shift_state = (vkey_scan >> 8) & 0xFF;
+            if shift_state == 0 {
+                Self::tap_single_key(vk);
+                return;
+            } else if shift_state == 1 {
+                Self::send_key(VK_SHIFT, false);
+                std::thread::sleep(std::time::Duration::from_millis(4));
+                Self::tap_single_key(vk);
+                std::thread::sleep(std::time::Duration::from_millis(4));
+                Self::send_key(VK_SHIFT, true);
+                return;
+            }
+        }
+
+        // Direct Unicode injection fallback for international characters and emojis
+        unsafe {
+            let kb_down = KEYBDINPUT {
+                wVk: 0,
+                wScan: code,
+                dwFlags: KEYEVENTF_UNICODE,
+                time: 0,
+                dwExtraInfo: 0,
+            };
+            let input_down = INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 { ki: kb_down },
+            };
+
+            let kb_up = KEYBDINPUT {
+                wVk: 0,
+                wScan: code,
+                dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+                time: 0,
+                dwExtraInfo: 0,
+            };
+            let input_up = INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 { ki: kb_up },
+            };
+
+            let res_down = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+            if res_down == 0 {
+                Self::ensure_attached_to_input_desktop();
+                let _ = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(4));
+            let res_up = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+            if res_up == 0 {
+                Self::ensure_attached_to_input_desktop();
+                let _ = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+            }
+        }
     }
 }
 
@@ -245,6 +338,55 @@ impl InputInjector for WindowsInjector {
         Self::tap_single_key(vk);
     }
 
+    fn send_keyboard_event(&mut self, event_type: u8, code: u16) {
+        match event_type {
+            KEY_TYPE_UNICODE => {
+                log::debug!("Injecting Unicode char U+{:04X}", code);
+                Self::send_unicode_char(code);
+            }
+            KEY_TYPE_SPECIAL => {
+                let special = SpecialKey::from(code);
+                let vk = match special {
+                    SpecialKey::Backspace => VK_BACK,
+                    SpecialKey::Enter => VK_RETURN,
+                    SpecialKey::Tab => VK_TAB,
+                    SpecialKey::Escape => VK_ESCAPE,
+                    SpecialKey::Delete => VK_DELETE,
+                    SpecialKey::ArrowUp => VK_UP,
+                    SpecialKey::ArrowDown => VK_DOWN,
+                    SpecialKey::ArrowLeft => VK_LEFT,
+                    SpecialKey::ArrowRight => VK_RIGHT,
+                    SpecialKey::Home => VK_HOME,
+                    SpecialKey::End => VK_END,
+                    SpecialKey::PageUp => VK_PRIOR,
+                    SpecialKey::PageDown => VK_NEXT,
+                    SpecialKey::Space => VK_SPACE,
+                    SpecialKey::Unknown => return,
+                };
+                log::debug!("Injecting SpecialKey {:?} (VK: 0x{:02X})", special, vk);
+                Self::tap_single_key(vk);
+            }
+            KEY_TYPE_SHORTCUT => {
+                let shortcut = ShortcutKey::from(code);
+                let target_key = match shortcut {
+                    ShortcutKey::SelectAll => b'A' as u16,
+                    ShortcutKey::Copy => b'C' as u16,
+                    ShortcutKey::Paste => b'V' as u16,
+                    ShortcutKey::Cut => b'X' as u16,
+                    ShortcutKey::Undo => b'Z' as u16,
+                    ShortcutKey::Redo => b'Y' as u16,
+                    ShortcutKey::Save => b'S' as u16,
+                    ShortcutKey::Unknown => return,
+                };
+                log::debug!("Injecting Shortcut {:?} (Ctrl + 0x{:02X})", shortcut, target_key);
+                Self::trigger_combo(&[VK_CONTROL, target_key]);
+            }
+            _ => {
+                log::warn!("Unknown keyboard event type: {}", event_type);
+            }
+        }
+    }
+
     fn zoom(&mut self, notches: i32) {
         if notches == 0 {
             return;
@@ -257,5 +399,33 @@ impl InputInjector for WindowsInjector {
         Self::send_mouse_input(MOUSEEVENTF_WHEEL, 0, 0, delta as u32);
         // Release Ctrl
         Self::send_key(VK_CONTROL, true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_send_input_diagnostic() {
+        WindowsInjector::ensure_attached_to_input_desktop();
+        unsafe {
+            let mi = MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: 0,
+                dwFlags: MOUSEEVENTF_MOVE,
+                time: 0,
+                dwExtraInfo: 0,
+            };
+            let input = INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 { mi },
+            };
+            let sent = SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+            let err = windows_sys::Win32::Foundation::GetLastError();
+            println!("\n>>> DIAGNOSTIC: SendInput returned {}, GetLastError = {} (size_of<INPUT> = {}) <<<\n", sent, err, std::mem::size_of::<INPUT>());
+            assert_eq!(sent, 1, "SendInput must succeed once attached to input desktop");
+        }
     }
 }

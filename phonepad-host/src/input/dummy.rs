@@ -27,6 +27,7 @@ pub struct DummyInjector {
     pub nav_forward_count: usize,
     pub numpad_keys: Vec<NumpadKey>,
     pub media_keys: Vec<MediaKey>,
+    pub keyboard_events: Vec<(u8, u16)>,
     pub zoom_notches: i32,
 }
 
@@ -134,6 +135,10 @@ impl InputInjector for DummyInjector {
             MediaKey::NavForward => self.nav_forward(),
             _ => self.media_keys.push(key),
         }
+    }
+
+    fn send_keyboard_event(&mut self, event_type: u8, code: u16) {
+        self.keyboard_events.push((event_type, code));
     }
 
     fn zoom(&mut self, notches: i32) {

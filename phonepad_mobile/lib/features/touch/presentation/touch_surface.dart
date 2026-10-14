@@ -5,12 +5,15 @@ import '../../../core/network/transport.dart';
 import '../../../core/power/power_governor.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
+import '../../../core/theme/liquid_glass_container.dart';
+import '../../../core/theme/spring_bounce_tap.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../modes/models/surface_mode.dart';
 import '../../modes/presentation/mode_selector.dart';
 import '../../modes/presentation/numpad_surface.dart';
 import '../../modes/presentation/remote_surface.dart';
 import '../logic/touch_detector.dart';
+import 'liquid_speed_dial.dart';
 import 'samsung_dot_matrix_painter.dart';
 import 'status_bar.dart';
 
@@ -43,6 +46,8 @@ class _TouchSurfaceState extends State<TouchSurface> {
   Timer? _heartbeatTimer;
   DateTime _lastPacketSent = DateTime.now();
 
+  StreamSubscription<ConnectionStatus>? _statusSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -52,14 +57,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
     _powerGovernor = widget.powerGovernor ?? PowerGovernor.instance;
 
     _powerGovernor.addListener(_onPowerGovernorChange);
-
-    widget.transport.statusStream.listen((newStatus) {
-      if (mounted) {
-        setState(() {
-          _status = newStatus;
-        });
-      }
-    });
+    _subscribeToTransport();
 
     // Send keep-alive heartbeat probe every 1000ms during idle periods
     _heartbeatTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
@@ -71,6 +69,26 @@ class _TouchSurfaceState extends State<TouchSurface> {
     });
   }
 
+  void _subscribeToTransport() {
+    _statusSubscription = widget.transport.statusStream.listen((newStatus) {
+      if (mounted) {
+        setState(() {
+          _status = newStatus;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(TouchSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.transport != widget.transport) {
+      _statusSubscription?.cancel();
+      _status = widget.transport.status;
+      _subscribeToTransport();
+    }
+  }
+
   void _onPowerGovernorChange() {
     if (mounted) {
       setState(() {});
@@ -79,6 +97,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
 
   @override
   void dispose() {
+    _statusSubscription?.cancel();
     _heartbeatTimer?.cancel();
     _touchNotifier.dispose();
     _powerGovernor.removeListener(_onPowerGovernorChange);
@@ -299,134 +318,201 @@ class _TouchSurfaceState extends State<TouchSurface> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28),
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: (event) {
-                  _powerGovernor.recordActivity();
-                  HapticFeedback.selectionClick();
-                  final packet = _detector.onPointerDown(event);
-                  _dispatchPacket(packet);
-                  _touchNotifier.value++;
-                  setState(() {});
-                },
-                onPointerMove: (event) {
-                  _powerGovernor.recordActivity();
-                  final packet = _detector.onPointerMove(event);
-                  _dispatchPacket(packet);
-                  _touchNotifier.value++; // 120Hz zero-lag canvas repaint without widget tree rebuild!
-                },
-                onPointerUp: (event) {
-                  _powerGovernor.recordActivity();
-                  final packet = _detector.onPointerUp(event);
-                  _dispatchPacket(packet);
-                  _touchNotifier.value++;
-                  setState(() {});
-                },
-                onPointerCancel: (event) {
-                  _powerGovernor.recordActivity();
-                  final packet = _detector.onPointerCancel(event);
-                  _dispatchPacket(packet);
-                  _touchNotifier.value++;
-                  setState(() {});
-                },
-                child: CustomPaint(
-                  painter: SamsungDotMatrixPainter(
-                    activePointers: _detector.activePointers,
-                    repaint: _touchNotifier,
-                    theme: theme,
-                    dotSpacing: density.spacing,
-                    baseDotRadius: density.baseRadius,
-                    maxDotRadius: density.maxRadius,
-                  ),
-                  child: Stack(
-                    children: [
-                      // Center Helper / Connect Banner
-                      if (_detector.pointerCount == 0)
-                        Center(
-                          child: _status == ConnectionStatus.connected
-                              ? Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.touch_app_rounded,
-                                      color: theme.textSecondary.withValues(alpha: 0.25),
-                                      size: isLandscape ? 28 : 36,
-                                    ),
-                                    SizedBox(height: isLandscape ? 6 : 12),
-                                    Text(
-                                      'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: isLandscape ? 10 : 11,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 1.5,
-                                        color: theme.textSecondary.withValues(alpha: 0.35),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.all(isLandscape ? 10 : 16),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: theme.accentPrimary.withValues(alpha: 0.1),
-                                        border: Border.all(
-                                          color: theme.accentPrimary.withValues(alpha: 0.3),
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        Icons.wifi_tethering_rounded,
-                                        color: theme.accentPrimary,
-                                        size: isLandscape ? 24 : 32,
-                                      ),
-                                    ),
-                                    SizedBox(height: isLandscape ? 8 : 16),
-                                    Text(
-                                      'NOT CONNECTED TO PC',
-                                      style: TextStyle(
-                                        color: theme.textPrimary,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1.2,
-                                        fontSize: isLandscape ? 12 : 14,
-                                      ),
-                                    ),
-                                    SizedBox(height: isLandscape ? 4 : 8),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: theme.accentPrimary,
-                                        foregroundColor: Colors.black,
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: isLandscape ? 18 : 24,
-                                          vertical: isLandscape ? 8 : 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        elevation: 8,
-                                        shadowColor: theme.accentPrimary.withValues(alpha: 0.5),
-                                      ),
-                                      onPressed: widget.onSettingsTap,
-                                      icon: const Icon(Icons.bolt_rounded, size: 20),
-                                      label: const Text(
-                                        'Connect PC Now',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: (event) {
+                        _powerGovernor.recordActivity();
+                        HapticFeedback.selectionClick();
+                        final packet = _detector.onPointerDown(event);
+                        _dispatchPacket(packet);
+                        _touchNotifier.value++;
+                        setState(() {});
+                      },
+                      onPointerMove: (event) {
+                        _powerGovernor.recordActivity();
+                        final packet = _detector.onPointerMove(event);
+                        _dispatchPacket(packet);
+                        _touchNotifier.value++; // 120Hz zero-lag canvas repaint without widget tree rebuild!
+                      },
+                      onPointerUp: (event) {
+                        _powerGovernor.recordActivity();
+                        final packet = _detector.onPointerUp(event);
+                        _dispatchPacket(packet);
+                        _touchNotifier.value++;
+                        setState(() {});
+                      },
+                      onPointerCancel: (event) {
+                        _powerGovernor.recordActivity();
+                        final packet = _detector.onPointerCancel(event);
+                        _dispatchPacket(packet);
+                        _touchNotifier.value++;
+                        setState(() {});
+                      },
+                      child: CustomPaint(
+                        painter: SamsungDotMatrixPainter(
+                          activePointers: _detector.activePointers,
+                          repaint: _touchNotifier,
+                          theme: theme,
+                          dotSpacing: density.spacing,
+                          baseDotRadius: density.baseRadius,
+                          maxDotRadius: density.maxRadius,
                         ),
-                    ],
+                        child: Stack(
+                          children: [
+                            // Center Helper / Connect Banner
+                            if (_detector.pointerCount == 0)
+                              Center(
+                                child: _status == ConnectionStatus.connected
+                                    ? Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.touch_app_rounded,
+                                            color: theme.textSecondary.withValues(alpha: 0.25),
+                                            size: isLandscape ? 28 : 36,
+                                          ),
+                                          SizedBox(height: isLandscape ? 6 : 12),
+                                          Text(
+                                            'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: isLandscape ? 10 : 11,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 1.5,
+                                              color: theme.textSecondary.withValues(alpha: 0.35),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.all(isLandscape ? 10 : 16),
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: theme.accentPrimary.withValues(alpha: 0.1),
+                                              border: Border.all(
+                                                color: theme.accentPrimary.withValues(alpha: 0.3),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.wifi_tethering_rounded,
+                                              color: theme.accentPrimary,
+                                              size: isLandscape ? 24 : 32,
+                                            ),
+                                          ),
+                                          SizedBox(height: isLandscape ? 8 : 16),
+                                          Text(
+                                            'NOT CONNECTED TO PC',
+                                            style: TextStyle(
+                                              color: theme.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 1.2,
+                                              fontSize: isLandscape ? 12 : 14,
+                                            ),
+                                          ),
+                                          SizedBox(height: isLandscape ? 4 : 8),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: theme.accentPrimary,
+                                              foregroundColor: Colors.black,
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isLandscape ? 18 : 24,
+                                                vertical: isLandscape ? 8 : 12,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(16),
+                                              ),
+                                              elevation: 8,
+                                              shadowColor: theme.accentPrimary.withValues(alpha: 0.5),
+                                            ),
+                                            onPressed: widget.onSettingsTap,
+                                            icon: const Icon(Icons.bolt_rounded, size: 20),
+                                            label: const Text(
+                                              'Connect PC Now',
+                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+
+                  // Floating Liquid Speed Dial FAB (derived from developer-bucket)
+                  Positioned(
+                    bottom: isLandscape ? 12 : 16,
+                    right: isLandscape ? 12 : 16,
+                    child: LiquidSpeedDial(
+                      onToggle: () {
+                        _powerGovernor.recordActivity();
+                      },
+                      actions: [
+                        LiquidDialAction(
+                          icon: Icons.splitscreen_rounded,
+                          label: 'Task View (Win+Tab)',
+                          color: theme.accentSecondary,
+                          onTap: () {
+                            _powerGovernor.recordActivity();
+                            _dispatchPacket(const PhonePadPacket(
+                              opcode: Opcode.move,
+                              dx: 0,
+                              dy: -30,
+                              flags: 0x01 | (3 << 1),
+                            ));
+                          },
+                        ),
+                        LiquidDialAction(
+                          icon: Icons.desktop_windows_rounded,
+                          label: 'Show Desktop (Win+D)',
+                          color: theme.accentPrimary,
+                          onTap: () {
+                            _powerGovernor.recordActivity();
+                            _dispatchPacket(const PhonePadPacket(
+                              opcode: Opcode.move,
+                              dx: 0,
+                              dy: 30,
+                              flags: 0x01 | (3 << 1),
+                            ));
+                          },
+                        ),
+                        LiquidDialAction(
+                          icon: Icons.dialpad_rounded,
+                          label: 'Numpad & Keyboard Deck',
+                          color: const Color(0xFF38BDF8),
+                          onTap: () {
+                            _powerGovernor.recordActivity();
+                            setState(() {
+                              _currentMode = SurfaceMode.numpad;
+                            });
+                          },
+                        ),
+                        LiquidDialAction(
+                          icon: Icons.tune_rounded,
+                          label: 'Settings Hub',
+                          color: const Color(0xFFA78BFA),
+                          onTap: () {
+                            _powerGovernor.recordActivity();
+                            widget.onSettingsTap();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
 
-        // Bottom Tactile Click Deck (Shown only in portrait mode; removed in horizontal landscape mode)
+        // Bottom Tactile Click Deck (Shown only in portrait mode)
         if (!isLandscape)
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -484,94 +570,100 @@ class _TouchSurfaceState extends State<TouchSurface> {
   }) {
     final accent = isPrimary ? theme.accentPrimary : theme.accentSecondary;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        splashColor: accent.withValues(alpha: 0.25),
-        highlightColor: accent.withValues(alpha: 0.12),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: isLandscape ? 8 : 12,
+    return SpringBounceTap(
+      onTap: onTap,
+      pressedScale: 0.94,
+      bounceOvershoot: 1.05,
+      child: LiquidGlassContainer(
+        blur: 16,
+        borderRadius: BorderRadius.circular(20),
+        backgroundColor: theme.surfaceCard.withValues(alpha: 0.85),
+        borderColor: isPrimary
+            ? theme.accentPrimary.withValues(alpha: 0.40)
+            : theme.borderSubtle.withValues(alpha: 0.60),
+        borderWidth: 1.3,
+        padding: EdgeInsets.symmetric(
+          horizontal: isLandscape ? 8 : 10,
+          vertical: isLandscape ? 8 : 12,
+        ),
+        shadows: [
+          BoxShadow(
+            color: isPrimary
+                ? theme.accentPrimary.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isPrimary
-                  ? theme.accentPrimary.withValues(alpha: 0.35)
-                  : theme.borderSubtle,
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Top glowing accent pill indicator
-              Container(
-                width: 24,
-                height: 2.5,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.4),
-                      blurRadius: 4,
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: isLandscape ? 4 : 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, size: 14, color: accent),
+        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top glowing accent pill indicator
+            Container(
+              width: 28,
+              height: 3,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.5),
+                    blurRadius: 6,
+                    offset: const Offset(0, 1),
                   ),
-                  const SizedBox(width: 8),
-                  Column(
+                ],
+              ),
+            ),
+            SizedBox(height: isLandscape ? 4 : 7),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.25),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(icon, size: 14, color: accent),
+                ),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: theme.textPrimary,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
+                          letterSpacing: 0.6,
                         ),
                       ),
                       Text(
                         subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: theme.textSecondary.withValues(alpha: 0.7),
+                          color: theme.textSecondary.withValues(alpha: 0.75),
                           fontSize: 8.5,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

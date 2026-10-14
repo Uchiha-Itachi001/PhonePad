@@ -18,7 +18,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: "0.0.0.0:4242".parse().unwrap(),
-            idle_timeout: Duration::from_millis(3000),
+            idle_timeout: Duration::from_secs(30),
         }
     }
 }

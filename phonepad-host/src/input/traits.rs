@@ -85,6 +85,78 @@ impl From<i16> for MediaKey {
     }
 }
 
+pub const KEY_TYPE_UNICODE: u8 = 0;
+pub const KEY_TYPE_SPECIAL: u8 = 1;
+pub const KEY_TYPE_SHORTCUT: u8 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecialKey {
+    Backspace = 1,
+    Enter = 2,
+    Tab = 3,
+    Escape = 4,
+    Delete = 5,
+    ArrowUp = 6,
+    ArrowDown = 7,
+    ArrowLeft = 8,
+    ArrowRight = 9,
+    Home = 10,
+    End = 11,
+    PageUp = 12,
+    PageDown = 13,
+    Space = 14,
+    Unknown = 255,
+}
+
+impl From<u16> for SpecialKey {
+    fn from(val: u16) -> Self {
+        match val {
+            1 => SpecialKey::Backspace,
+            2 => SpecialKey::Enter,
+            3 => SpecialKey::Tab,
+            4 => SpecialKey::Escape,
+            5 => SpecialKey::Delete,
+            6 => SpecialKey::ArrowUp,
+            7 => SpecialKey::ArrowDown,
+            8 => SpecialKey::ArrowLeft,
+            9 => SpecialKey::ArrowRight,
+            10 => SpecialKey::Home,
+            11 => SpecialKey::End,
+            12 => SpecialKey::PageUp,
+            13 => SpecialKey::PageDown,
+            14 => SpecialKey::Space,
+            _ => SpecialKey::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShortcutKey {
+    SelectAll = 1,
+    Copy = 2,
+    Paste = 3,
+    Cut = 4,
+    Undo = 5,
+    Redo = 6,
+    Save = 7,
+    Unknown = 255,
+}
+
+impl From<u16> for ShortcutKey {
+    fn from(val: u16) -> Self {
+        match val {
+            1 => ShortcutKey::SelectAll,
+            2 => ShortcutKey::Copy,
+            3 => ShortcutKey::Paste,
+            4 => ShortcutKey::Cut,
+            5 => ShortcutKey::Undo,
+            6 => ShortcutKey::Redo,
+            7 => ShortcutKey::Save,
+            _ => ShortcutKey::Unknown,
+        }
+    }
+}
+
 /// Abstract interface for injecting OS-level mouse and keyboard events.
 pub trait InputInjector: Send + Sync {
     /// Injects relative mouse movement by pixel deltas (dx, dy).
@@ -171,6 +243,9 @@ pub trait InputInjector: Send + Sync {
     /// Injects a media or presentation slide control keystroke.
     fn send_media_key(&mut self, key: MediaKey);
 
+    /// Injects a virtual keyboard event (Unicode character, special key, or shortcut).
+    fn send_keyboard_event(&mut self, event_type: u8, code: u16);
+
     /// Injects zoom in / zoom out (positive notches = zoom in via Ctrl+Wheel, negative = zoom out).
     fn zoom(&mut self, notches: i32);
 }
@@ -250,6 +325,10 @@ impl InputInjector for Box<dyn InputInjector> {
 
     fn send_media_key(&mut self, key: MediaKey) {
         (**self).send_media_key(key);
+    }
+
+    fn send_keyboard_event(&mut self, event_type: u8, code: u16) {
+        (**self).send_keyboard_event(event_type, code);
     }
 
     fn zoom(&mut self, notches: i32) {

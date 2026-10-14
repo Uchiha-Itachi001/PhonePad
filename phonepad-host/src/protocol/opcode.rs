@@ -24,6 +24,8 @@ pub enum Opcode {
     Numpad,
     /// Presentation and Media remote event (0x21)
     Media,
+    /// Virtual Keyboard keystroke event (0x22)
+    Keyboard,
     /// Periodic heartbeat probe (0xFE)
     Heartbeat,
     /// Handshake acknowledgment or ping probe (0xFF)
@@ -46,6 +48,7 @@ impl From<u8> for Opcode {
             0x10 => Opcode::SleepStandby,
             0x20 => Opcode::Numpad,
             0x21 => Opcode::Media,
+            0x22 => Opcode::Keyboard,
             0xFE => Opcode::Heartbeat,
             0xFF => Opcode::Ack,
             other => Opcode::Unknown(other),
@@ -67,6 +70,7 @@ impl From<Opcode> for u8 {
             Opcode::SleepStandby => 0x10,
             Opcode::Numpad => 0x20,
             Opcode::Media => 0x21,
+            Opcode::Keyboard => 0x22,
             Opcode::Heartbeat => 0xFE,
             Opcode::Ack => 0xFF,
             Opcode::Unknown(val) => val,

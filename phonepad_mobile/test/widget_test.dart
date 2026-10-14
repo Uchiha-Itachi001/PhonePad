@@ -13,6 +13,9 @@ import 'package:phonepad_mobile/features/modes/presentation/remote_surface.dart'
 import 'package:phonepad_mobile/core/theme/theme_controller.dart';
 import 'package:phonepad_mobile/features/touch/logic/touch_detector.dart';
 import 'package:phonepad_mobile/features/touch/presentation/touch_surface.dart';
+import 'package:phonepad_mobile/core/theme/spring_bounce_tap.dart';
+import 'package:phonepad_mobile/core/theme/liquid_glass_container.dart';
+import 'package:phonepad_mobile/features/touch/presentation/liquid_speed_dial.dart';
 
 class MockTransport implements ITransport {
   final _controller = StreamController<ConnectionStatus>.broadcast();
@@ -187,6 +190,69 @@ void main() {
 
     expect(mockTransport.sentPackets.last.opcode, equals(Opcode.numpad));
     expect(mockTransport.sentPackets.last.dx, equals(NumpadKey.enter.code));
+  });
+
+  testWidgets('NumpadSurface switches to Keyboard deck and dispatches opcode.keyboard packets', (WidgetTester tester) async {
+    final mockTransport = MockTransport();
+    var activityTriggered = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: NumpadSurface(
+          transport: mockTransport,
+          onActivity: () => activityTriggered = true,
+        ),
+      ),
+    ));
+
+    // Switch to KEYBOARD mode
+    await tester.tap(find.text('KEYBOARD'));
+    await tester.pumpAndSettle();
+
+    // Verify keyboard keys are now present
+    expect(find.text('SPACE'), findsOneWidget);
+    expect(find.text('ESC'), findsOneWidget);
+    expect(find.text('TAB'), findsOneWidget);
+
+    // Tap letter 'a'
+    activityTriggered = false;
+    await tester.tap(find.text('a'));
+    await tester.pump();
+
+    expect(activityTriggered, isTrue);
+    final charPackets = mockTransport.sentPackets.where((p) => p.opcode == Opcode.keyboard).toList();
+    expect(charPackets.isNotEmpty, isTrue);
+    expect(charPackets.last.dx, equals('a'.codeUnitAt(0)));
+    expect(charPackets.last.dy, equals(KeyboardKeyType.unicodeChar));
+
+    // Tap SPACE bar
+    await tester.tap(find.text('SPACE'));
+    await tester.pump();
+
+    expect(mockTransport.sentPackets.last.opcode, equals(Opcode.keyboard));
+    expect(mockTransport.sentPackets.last.dx, equals(32)); // ' '
+
+    // Tap ESC key
+    await tester.tap(find.text('ESC'));
+    await tester.pump();
+
+    expect(mockTransport.sentPackets.last.opcode, equals(Opcode.keyboard));
+    expect(mockTransport.sentPackets.last.dx, equals(SpecialKey.escape.code));
+    expect(mockTransport.sentPackets.last.dy, equals(KeyboardKeyType.specialKey));
+
+    // Tap COPY shortcut
+    await tester.tap(find.text('COPY'));
+    await tester.pump();
+
+    expect(mockTransport.sentPackets.last.opcode, equals(Opcode.keyboard));
+    expect(mockTransport.sentPackets.last.dx, equals(ShortcutKey.copy.code));
+    expect(mockTransport.sentPackets.last.dy, equals(KeyboardKeyType.shortcut));
+
+    // Switch back to NUMPAD mode
+    await tester.tap(find.text('123 NUMPAD'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('7'), findsOneWidget);
   });
 
   testWidgets('RemoteSurface dispatches opcode.media packets for deck and audio', (WidgetTester tester) async {
@@ -473,6 +539,140 @@ void main() {
     expect(p1!.opcode, equals(Opcode.move));
     expect(p1.dx, equals(2));
     expect(p1.isHighRes, isTrue);
+  });
+
+  testWidgets('SpringBounceTap applies tactile spring animation on tap and executes callback', (WidgetTester tester) async {
+    var tapped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SpringBounceTap(
+            onTap: () => tapped = true,
+            child: const Text('SPRING BUTTON'),
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('SPRING BUTTON'), findsOneWidget);
+    await tester.tap(find.text('SPRING BUTTON'));
+    await tester.pumpAndSettle();
+
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('LiquidGlassContainer renders child with frosted glass styling', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: LiquidGlassContainer(
+            blur: 12.0,
+            width: 120,
+            height: 60,
+            child: const Text('FROSTED GLASS'),
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('FROSTED GLASS'), findsOneWidget);
+    expect(find.byType(LiquidGlassContainer), findsOneWidget);
+  });
+
+  testWidgets('LiquidSpeedDial expands satellite actions on trigger tap and triggers action', (WidgetTester tester) async {
+    var actionTapped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: LiquidSpeedDial(
+            actions: [
+              LiquidDialAction(
+                icon: Icons.desktop_windows_rounded,
+                label: 'Desktop',
+                onTap: () => actionTapped = true,
+              ),
+              LiquidDialAction(
+                icon: Icons.hub_rounded,
+                label: 'Hub',
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
+
+    // Initially trigger is visible, satellites not yet expanded
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+
+    // Tap trigger to expand satellites with spring bounce
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.desktop_windows_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.hub_rounded), findsOneWidget);
+
+    // Tap satellite action
+    await tester.tap(find.byIcon(Icons.desktop_windows_rounded));
+    await tester.pumpAndSettle();
+
+    expect(actionTapped, isTrue);
+  });
+
+  testWidgets('TouchSurface integrates LiquidSpeedDial and LiquidGlass clickpads', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.5;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final mockTransport = MockTransport();
+
+    await tester.pumpWidget(MaterialApp(
+      home: TouchSurface(
+        transport: mockTransport,
+        destination: '127.0.0.1:4242',
+        onSettingsTap: () {},
+      ),
+    ));
+
+    // LiquidSpeedDial trigger is rendered on trackpad
+    expect(find.byType(LiquidSpeedDial), findsOneWidget);
+    expect(find.text('LEFT CLICK'), findsOneWidget);
+    expect(find.text('RIGHT CLICK'), findsOneWidget);
+
+    // Tap LEFT CLICK pad -> dispatches tapLeft packet
+    await tester.tap(find.text('LEFT CLICK'));
+    await tester.pumpAndSettle();
+
+    expect(mockTransport.sentPackets.any((p) => p.opcode == Opcode.tapLeft), isTrue);
+
+    // Tap RIGHT CLICK pad -> dispatches tapRight packet
+    await tester.tap(find.text('RIGHT CLICK'));
+    await tester.pumpAndSettle();
+
+    expect(mockTransport.sentPackets.any((p) => p.opcode == Opcode.tapRight), isTrue);
+
+    // Open LiquidSpeedDial
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+
+    // Verify actions visible
+    expect(find.byIcon(Icons.splitscreen_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.desktop_windows_rounded), findsOneWidget);
+
+    // Tap Show Desktop action
+    await tester.tap(find.byIcon(Icons.desktop_windows_rounded));
+    await tester.pumpAndSettle();
+
+    // Verify 3-finger swipe packet was dispatched for Show Desktop
+    final desktopPackets = mockTransport.sentPackets
+        .where((p) => p.opcode == Opcode.move && p.dy == 30 && (p.flags & 0x01 != 0))
+        .toList();
+    expect(desktopPackets.isNotEmpty, isTrue);
   });
 }
 

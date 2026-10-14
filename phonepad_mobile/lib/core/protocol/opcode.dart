@@ -33,6 +33,9 @@ abstract class Opcode {
   /// Presentation and Media remote event (0x21)
   static const int media = 0x21;
 
+  /// Virtual Keyboard keystroke event (0x22)
+  static const int keyboard = 0x22;
+
   /// Periodic heartbeat probe (0xFE)
   static const int heartbeat = 0xFE;
 

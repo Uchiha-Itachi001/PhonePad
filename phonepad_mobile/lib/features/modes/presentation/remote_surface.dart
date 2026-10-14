@@ -5,6 +5,8 @@ import '../../../core/network/transport.dart';
 import '../../../core/protocol/keys.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
+import '../../../core/theme/liquid_glass_container.dart';
+import '../../../core/theme/spring_bounce_tap.dart';
 import '../../../core/theme/theme_controller.dart';
 
 /// Ultra-modern tactile studio remote with circular media dial and slide deck.
@@ -490,26 +492,26 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   }) {
     final accent = isPrimary ? theme.accentPrimary : theme.accentSecondary;
 
-    return GestureDetector(
+    return SpringBounceTap(
       key: key,
       onTap: onTap,
-      child: Container(
+      pressedScale: 0.94,
+      bounceOvershoot: 1.05,
+      child: LiquidGlassContainer(
+        blur: 16,
+        borderRadius: BorderRadius.circular(20),
+        backgroundColor: theme.surfaceCard.withValues(alpha: 0.85),
+        borderColor: accent.withValues(alpha: isPrimary ? 0.45 : 0.25),
+        borderWidth: 1.3,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: theme.surfaceCard.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: accent.withValues(alpha: isPrimary ? 0.45 : 0.25),
-            width: 1.5,
-          ),
-          boxShadow: [
-            if (isPrimary)
-              BoxShadow(
-                color: accent.withValues(alpha: 0.12),
-                blurRadius: 16,
-              ),
-          ],
-        ),
+        shadows: [
+          if (isPrimary)
+            BoxShadow(
+              color: accent.withValues(alpha: 0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+        ],
         child: Row(
           children: [
             Container(
@@ -517,6 +519,10 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
               decoration: BoxDecoration(
                 color: accent.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: accent.withValues(alpha: 0.25),
+                  width: 1,
+                ),
               ),
               child: Icon(icon, color: accent, size: 24),
             ),
@@ -562,19 +568,19 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   }) {
     final color = isDestructive ? const Color(0xFFEF4444) : theme.textPrimary;
 
-    return GestureDetector(
+    return SpringBounceTap(
       onTap: onTap,
-      child: Container(
+      pressedScale: 0.92,
+      bounceOvershoot: 1.06,
+      child: LiquidGlassContainer(
+        blur: 12,
+        borderRadius: BorderRadius.circular(14),
+        backgroundColor: theme.surfaceCard.withValues(alpha: 0.8),
+        borderColor: isDestructive
+            ? const Color(0xFFEF4444).withValues(alpha: 0.4)
+            : theme.borderSubtle,
+        borderWidth: 1.1,
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: theme.surfaceCard.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDestructive
-                ? const Color(0xFFEF4444).withValues(alpha: 0.3)
-                : theme.borderSubtle,
-          ),
-        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import '../protocol/handshake.dart';
+import '../protocol/opcode.dart';
 import '../protocol/packet.dart';
 import 'transport.dart';
 
@@ -10,6 +11,8 @@ class TcpTransport implements ITransport {
   final StreamController<ConnectionStatus> _statusController =
       StreamController<ConnectionStatus>.broadcast();
   ConnectionStatus _status = ConnectionStatus.disconnected;
+  Timer? _keepAliveTimer;
+  DateTime _lastPacketSent = DateTime.now();
 
   @override
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
@@ -21,7 +24,29 @@ class TcpTransport implements ITransport {
     if (_status != newStatus) {
       _status = newStatus;
       _statusController.add(_status);
+      if (newStatus == ConnectionStatus.connected) {
+        _startKeepAlive();
+      } else {
+        _stopKeepAlive();
+      }
     }
+  }
+
+  void _startKeepAlive() {
+    _stopKeepAlive();
+    _lastPacketSent = DateTime.now();
+    _keepAliveTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+      if (_status == ConnectionStatus.connected && _socket != null) {
+        if (DateTime.now().difference(_lastPacketSent).inMilliseconds >= 1000) {
+          sendPacket(const PhonePadPacket(opcode: Opcode.heartbeat));
+        }
+      }
+    });
+  }
+
+  void _stopKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
   }
 
   int activePin = 0;
@@ -82,6 +107,7 @@ class TcpTransport implements ITransport {
       try {
         packet.writeTo(_packetBuffer);
         _socket!.add(_packetBuffer);
+        _lastPacketSent = DateTime.now();
       } catch (e) {
         _setStatus(ConnectionStatus.disconnected);
       }
@@ -90,6 +116,7 @@ class TcpTransport implements ITransport {
 
   @override
   Future<void> disconnect() async {
+    _stopKeepAlive();
     try {
       await _socket?.close();
     } catch (_) {}

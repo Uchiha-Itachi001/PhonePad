@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // 2. Spawn native Windows Bluetooth RFCOMM SPP server in background thread
     #[cfg(windows)]
     {
-        let bt_timeout = std::time::Duration::from_millis(3000);
+        let bt_timeout = std::time::Duration::from_secs(30);
         std::thread::spawn(move || {
             if let Err(e) = server::bluetooth::windows_bth::run_bluetooth_rfcomm_server(bt_timeout) {
                 log::warn!("Bluetooth RFCOMM server info: {}", e);

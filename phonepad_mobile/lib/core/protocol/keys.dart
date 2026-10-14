@@ -40,3 +40,50 @@ enum MediaKey {
 
   const MediaKey(this.code, this.label);
 }
+
+/// Virtual Keyboard packet event types matching Rust protocol.
+abstract class KeyboardKeyType {
+  static const int unicodeChar = 0;
+  static const int specialKey = 1;
+  static const int shortcut = 2;
+}
+
+/// Special Virtual Keys with specific Win32 handling.
+enum SpecialKey {
+  backspace(1, '⌫'),
+  enter(2, 'Enter'),
+  tab(3, 'Tab'),
+  escape(4, 'Esc'),
+  delete(5, 'Del'),
+  arrowUp(6, '▲'),
+  arrowDown(7, '▼'),
+  arrowLeft(8, '◄'),
+  arrowRight(9, '►'),
+  home(10, 'Home'),
+  end(11, 'End'),
+  pageUp(12, 'PgUp'),
+  pageDown(13, 'PgDn'),
+  space(14, 'Space');
+
+  final int code;
+  final String label;
+
+  const SpecialKey(this.code, this.label);
+}
+
+/// Keyboard shortcuts sent as Ctrl + key.
+enum ShortcutKey {
+  selectAll(1, 'Select All', 'Ctrl+A'),
+  copy(2, 'Copy', 'Ctrl+C'),
+  paste(3, 'Paste', 'Ctrl+V'),
+  cut(4, 'Cut', 'Ctrl+X'),
+  undo(5, 'Undo', 'Ctrl+Z'),
+  redo(6, 'Redo', 'Ctrl+Y'),
+  save(7, 'Save', 'Ctrl+S');
+
+  final int code;
+  final String label;
+  final String combo;
+
+  const ShortcutKey(this.code, this.label, this.combo);
+}

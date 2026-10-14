@@ -153,6 +153,11 @@ impl<I: InputInjector> SessionHandler<I> {
                 let key = crate::input::MediaKey::from(packet.dx);
                 self.injector.send_media_key(key);
             }
+            Opcode::Keyboard => {
+                let event_type = packet.dy as u8;
+                let code = packet.dx as u16;
+                self.injector.send_keyboard_event(event_type, code);
+            }
             Opcode::Unknown(op) => {
                 log::warn!("Ignored unknown packet opcode: 0x{:02X}", op);
             }
@@ -302,18 +307,23 @@ mod tests {
 
         let mut session = SessionHandler::new(dummy, ballistics, filter, fsm);
 
-        // Numpad 7 (dx = 7) and Media PlayPause (dx = 1)
+        // Numpad 7 (dx = 7), Media PlayPause (dx = 1), and Keyboard 'A' (dx = 65, dy = 0)
         let p1 = Packet::new(Opcode::Numpad, 7, 0, 0x01);
         let p2 = Packet::new(Opcode::Media, 1, 0, 0x01);
+        let p3 = Packet::new(Opcode::Keyboard, 65, 0, 0x01);
 
         session.handle_packet(p1);
         session.handle_packet(p2);
+        session.handle_packet(p3);
 
         assert_eq!(session.injector.numpad_keys.len(), 1);
         assert_eq!(session.injector.numpad_keys[0], crate::input::NumpadKey::Num7);
 
         assert_eq!(session.injector.media_keys.len(), 1);
         assert_eq!(session.injector.media_keys[0], crate::input::MediaKey::PlayPause);
+
+        assert_eq!(session.injector.keyboard_events.len(), 1);
+        assert_eq!(session.injector.keyboard_events[0], (0, 65));
     }
 
     #[tokio::test]
