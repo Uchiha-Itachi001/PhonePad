@@ -16,6 +16,9 @@ import 'package:phonepad_mobile/features/touch/presentation/touch_surface.dart';
 import 'package:phonepad_mobile/core/theme/spring_bounce_tap.dart';
 import 'package:phonepad_mobile/core/theme/liquid_glass_container.dart';
 import 'package:phonepad_mobile/features/touch/presentation/liquid_speed_dial.dart';
+import 'package:phonepad_mobile/features/splash/presentation/splash_screen.dart';
+import 'package:phonepad_mobile/features/splash/presentation/border_glow_badge.dart';
+import 'package:phonepad_mobile/features/splash/presentation/wave_photon_progress_bar.dart';
 
 class MockTransport implements ITransport {
   final _controller = StreamController<ConnectionStatus>.broadcast();
@@ -674,6 +677,59 @@ void main() {
         .toList();
     expect(desktopPackets.isNotEmpty, isTrue);
   });
+
+  testWidgets('SplashScreen renders circling particles, border glow badge, and progress bar', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: SplashScreen(
+        onFinish: () {},
+        bootDuration: const Duration(seconds: 10),
+        autoDismiss: false,
+      ),
+    ));
+
+    // Verify Brand typography and emblem elements
+    expect(find.text('Phone'), findsOneWidget);
+    expect(find.text('Pad'), findsOneWidget);
+    expect(find.text('NATIVE REAL-TIME WI-FI TRACKPAD'), findsOneWidget);
+
+    // Verify BorderGlowBadge is present
+    expect(find.byType(BorderGlowBadge), findsOneWidget);
+
+    // Verify WavePhotonProgressBar is present
+    expect(find.byType(WavePhotonProgressBar), findsOneWidget);
+
+    // Verify initial step text
+    expect(find.text('Initializing touch digitizer...'), findsOneWidget);
+
+    // Verify Skip button is present
+    expect(find.text('Skip'), findsOneWidget);
+  });
+
+  testWidgets('SplashScreen advances boot progress and triggers onFinish when skipped or completed', (WidgetTester tester) async {
+    bool finished = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: SplashScreen(
+        onFinish: () {
+          finished = true;
+        },
+        bootDuration: const Duration(milliseconds: 1000),
+        autoDismiss: true,
+      ),
+    ));
+
+    // Initially not finished
+    expect(finished, isFalse);
+
+    // Tap Skip button
+    await tester.tap(find.text('Skip'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 450));
+
+    // Verify onFinish was invoked
+    expect(finished, isTrue);
+  });
 }
+
 
 

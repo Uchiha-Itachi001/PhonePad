@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../core/network/bluetooth_transport.dart';
 import '../../../core/network/discovery_client.dart';
 import '../../../core/power/power_governor.dart';
 import '../../../core/theme/theme_controller.dart';
@@ -8,17 +7,13 @@ import '../../../core/theme/theme_controller.dart';
 /// Redesigned Control Center modal with unified Connections tab, sub-tabs, and AMOLED power settings.
 class ConnectionHubModal extends StatefulWidget {
   final DiscoveryClient discoveryClient;
-  final BluetoothTransport bluetoothTransport;
   final String currentDestination;
-  final bool isBluetooth;
-  final Function(String address, bool isBluetooth, String displayName, int pin) onConnect;
+  final Function(String address, String displayName, int pin) onConnect;
 
   const ConnectionHubModal({
     super.key,
     required this.discoveryClient,
-    required this.bluetoothTransport,
     required this.currentDestination,
-    required this.isBluetooth,
     required this.onConnect,
   });
 
@@ -29,22 +24,19 @@ class ConnectionHubModal extends StatefulWidget {
 class _ConnectionHubModalState extends State<ConnectionHubModal>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _connectionSubTab = 0; // 0: Wi-Fi Auto, 1: Bluetooth, 2: Manual IP
+  int _connectionSubTab = 0; // 0: Wi-Fi Auto, 1: Manual IP
 
   final TextEditingController _ipController =
       TextEditingController(text: '192.168.1.15:4242');
   final TextEditingController _pinController = TextEditingController();
 
   List<DiscoveredHost> _wifiHosts = [];
-  List<BluetoothDeviceInfo> _btDevices = [];
-  bool _isLoadingBt = false;
 
   @override
   void initState() {
     super.initState();
     // 4 Main Tabs: Connections, Appearance, Gestures, Power Saver
     _tabController = TabController(length: 4, vsync: this, initialIndex: 0);
-    _connectionSubTab = widget.isBluetooth ? 1 : 0;
     _wifiHosts = widget.discoveryClient.currentHosts;
 
     widget.discoveryClient.startDiscovery();
@@ -55,24 +47,6 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
         });
       }
     });
-
-    _loadBluetoothDevices();
-  }
-
-  Future<void> _loadBluetoothDevices() async {
-    setState(() => _isLoadingBt = true);
-    try {
-      await widget.bluetoothTransport.requestPermissions();
-      final devices = await widget.bluetoothTransport.getPairedDevices();
-      if (mounted) {
-        setState(() {
-          _btDevices = devices;
-          _isLoadingBt = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingBt = false);
-    }
   }
 
   @override
@@ -299,16 +273,9 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                 isLandscape: isLandscape,
               ),
               _buildSubTabButton(
-                title: 'Bluetooth',
-                icon: Icons.bluetooth_rounded,
-                index: 1,
-                theme: theme,
-                isLandscape: isLandscape,
-              ),
-              _buildSubTabButton(
-                title: 'Manual IP',
+                title: 'Direct / Manual IP',
                 icon: Icons.lan_rounded,
-                index: 2,
+                index: 1,
                 theme: theme,
                 isLandscape: isLandscape,
               ),
@@ -324,7 +291,6 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
             index: _connectionSubTab,
             children: [
               _buildWifiAutoContent(theme),
-              _buildBluetoothContent(theme),
               _buildManualIpContent(theme),
             ],
           ),
@@ -468,7 +434,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                 itemCount: _wifiHosts.length,
                 itemBuilder: (context, index) {
                   final host = _wifiHosts[index];
-                  final isCurrent = widget.currentDestination == host.destination && !widget.isBluetooth;
+                  final isCurrent = widget.currentDestination == host.destination;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -524,162 +490,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                           ),
                           onPressed: () {
                             Navigator.pop(context);
-                            widget.onConnect(host.destination, false, host.name, host.pin);
-                          },
-                          child: Text(
-                            isCurrent ? 'Active' : 'Connect',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // --- Bluetooth Sub-Tab ---
-  Widget _buildBluetoothContent(PhonePadThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'PAIRED BLUETOOTH DEVICES',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: theme.textSecondary,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _loadBluetoothDevices,
-                icon: Icon(Icons.refresh_rounded, size: 15, color: theme.accentSecondary),
-                label: Text('Refresh', style: TextStyle(color: theme.accentSecondary, fontSize: 11)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          if (_isLoadingBt)
-            const Expanded(
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else if (_btDevices.isEmpty)
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.accentSecondary.withValues(alpha: 0.08),
-                        border: Border.all(
-                          color: theme.accentSecondary.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.bluetooth_searching_rounded,
-                        color: theme.accentSecondary,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'No Paired Bluetooth Devices',
-                      style: TextStyle(
-                        color: theme.textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Pair your PC in Android Bluetooth Settings first,\nthen tap Refresh above.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: theme.textSecondary.withValues(alpha: 0.8),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: _btDevices.length,
-                itemBuilder: (context, index) {
-                  final dev = _btDevices[index];
-                  final isCurrent = widget.currentDestination == dev.address && widget.isBluetooth;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isCurrent
-                          ? theme.accentSecondary.withValues(alpha: 0.12)
-                          : theme.surfaceCard,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isCurrent ? theme.accentSecondary : theme.borderSubtle,
-                        width: isCurrent ? 1.5 : 1.0,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: theme.accentSecondary.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.bluetooth_connected_rounded, color: theme.accentSecondary, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                dev.name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                dev.address,
-                                style: TextStyle(fontSize: 11, color: theme.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isCurrent ? theme.surfaceCard : theme.accentSecondary,
-                            foregroundColor: isCurrent ? theme.accentSecondary : Colors.black,
-                            elevation: isCurrent ? 0 : 4,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: () {
-                            Navigator.pop(context);
-                            widget.onConnect(dev.address, true, dev.name, 0);
+                            widget.onConnect(host.destination, host.name, host.pin);
                           },
                           child: Text(
                             isCurrent ? 'Active' : 'Connect',
@@ -785,7 +596,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                     final pin = int.tryParse(_pinController.text.trim()) ?? 0;
                     if (target.isNotEmpty) {
                       Navigator.pop(context);
-                      widget.onConnect(target, false, 'Wi-Fi: $target', pin);
+                      widget.onConnect(target, 'Wi-Fi: $target', pin);
                     }
                   },
                   child: const Text('Connect IP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),

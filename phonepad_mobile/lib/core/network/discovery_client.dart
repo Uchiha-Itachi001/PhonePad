@@ -78,16 +78,44 @@ class DiscoveryClient {
     }
   }
 
-  /// Sends a broadcast discovery ping across local Wi-Fi.
+  /// Sends a broadcast discovery ping across local Wi-Fi, directed subnet broadcasts, and gateway addresses.
   void sendDiscoveryProbe() {
     if (_socket == null) return;
     try {
       final payload = utf8.encode('PHONEPAD_DISCOVER');
+
+      // 1. Universal limited broadcast
       _socket?.send(
         payload,
         InternetAddress('255.255.255.255'),
         defaultPort,
       );
+
+      // 2. Discover local interface subnets and send directed subnet broadcast + gateway probe
+      NetworkInterface.list(
+        includeLinkLocal: false,
+        type: InternetAddressType.IPv4,
+      ).then((interfaces) {
+        for (final iface in interfaces) {
+          for (final addr in iface.addresses) {
+            if (addr.isLoopback) continue;
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              // Directed subnet broadcast (e.g. 192.168.1.255)
+              final subnetBroadcast = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+              try {
+                _socket?.send(payload, InternetAddress(subnetBroadcast), defaultPort);
+              } catch (_) {}
+
+              // Subnet gateway (e.g. 192.168.1.1 / 192.168.137.1 - critical for Hotspot where PC is host gateway)
+              final gateway = '${parts[0]}.${parts[1]}.${parts[2]}.1';
+              try {
+                _socket?.send(payload, InternetAddress(gateway), defaultPort);
+              } catch (_) {}
+            }
+          }
+        }
+      }).catchError((_) {});
     } catch (_) {}
   }
 
@@ -101,9 +129,11 @@ class DiscoveryClient {
           final port = int.tryParse(parts[2].trim()) ?? defaultPort;
           final name = parts[3].trim();
 
-          final resolvedIp = (ip == '127.0.0.1' || ip == '0.0.0.0')
-              ? datagram.address.address
-              : ip;
+          // Prefer datagram.address.address (the verified physical IP that reached our Wi-Fi adapter)
+          final senderIp = datagram.address.address;
+          final resolvedIp = (senderIp.isNotEmpty && senderIp != '127.0.0.1' && senderIp != '0.0.0.0')
+              ? senderIp
+              : ((ip == '127.0.0.1' || ip == '0.0.0.0') ? senderIp : ip);
           final pin = parts.length >= 5 ? (int.tryParse(parts[4].trim()) ?? 0) : 0;
 
           final host = DiscoveredHost(

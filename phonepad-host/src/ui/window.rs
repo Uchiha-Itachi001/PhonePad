@@ -176,45 +176,33 @@ pub mod win32_window {
 
             SelectObject(mem_dc, font_body);
             SetTextColor(mem_dc, 0x94A3B8);
-            let mut label_bt_rect = RECT { left: 44, top: 137, right: 200, bottom: 157 };
-            let label_bt = encode_wide("Bluetooth RFCOMM:");
-            DrawTextW(mem_dc, label_bt.as_ptr(), -1, &mut label_bt_rect, DT_LEFT | DT_SINGLELINE);
-
-            SelectObject(mem_dc, font_bold);
-            SetTextColor(mem_dc, 0xD4B606); // Cyan
-            let mut val_bt_rect = RECT { left: 180, top: 137, right: 480, bottom: 157 };
-            let val_bt = encode_wide("Standard SPP UUID (Ready & Paired)");
-            DrawTextW(mem_dc, val_bt.as_ptr(), -1, &mut val_bt_rect, DT_LEFT | DT_SINGLELINE);
-
-            SelectObject(mem_dc, font_body);
-            SetTextColor(mem_dc, 0x94A3B8);
-            let mut label_cl_rect = RECT { left: 44, top: 160, right: 200, bottom: 180 };
+            let mut label_cl_rect = RECT { left: 44, top: 137, right: 200, bottom: 157 };
             let label_cl = encode_wide("Active Client:");
             DrawTextW(mem_dc, label_cl.as_ptr(), -1, &mut label_cl_rect, DT_LEFT | DT_SINGLELINE);
 
             SelectObject(mem_dc, font_bold);
             SetTextColor(mem_dc, if is_connected { 0x81B910 } else { 0x64748B });
-            let mut val_cl_rect = RECT { left: 160, top: 160, right: 480, bottom: 180 };
+            let mut val_cl_rect = RECT { left: 160, top: 137, right: 480, bottom: 157 };
             let val_cl = encode_wide(&format!("{} [{}]", client_name, transport));
             DrawTextW(mem_dc, val_cl.as_ptr(), -1, &mut val_cl_rect, DT_LEFT | DT_SINGLELINE);
 
             // Security PIN display
             SelectObject(mem_dc, font_body);
             SetTextColor(mem_dc, 0x94A3B8);
-            let mut label_pin_rect = RECT { left: 44, top: 183, right: 200, bottom: 203 };
+            let mut label_pin_rect = RECT { left: 44, top: 160, right: 200, bottom: 180 };
             let label_pin = encode_wide("Pairing PIN:");
             DrawTextW(mem_dc, label_pin.as_ptr(), -1, &mut label_pin_rect, DT_LEFT | DT_SINGLELINE);
 
             SelectObject(mem_dc, font_bold);
             SetTextColor(mem_dc, 0x06B6D4); // Cyan
-            let mut val_pin_rect = RECT { left: 160, top: 183, right: 480, bottom: 203 };
+            let mut val_pin_rect = RECT { left: 160, top: 160, right: 480, bottom: 180 };
             let val_pin = encode_wide(&format!("{:04}  (Zero-Trust Protected)", state.auth_pin));
             DrawTextW(mem_dc, val_pin.as_ptr(), -1, &mut val_pin_rect, DT_LEFT | DT_SINGLELINE);
 
             // Instructions text
             SelectObject(mem_dc, font_sub);
             SetTextColor(mem_dc, 0x64748B);
-            let mut inst_rect = RECT { left: 44, top: 207, right: 480, bottom: 227 };
+            let mut inst_rect = RECT { left: 44, top: 186, right: 480, bottom: 206 };
             let inst_txt = encode_wide("⚡ Open PhonePad on phone: Auto-Connect or scan QR below");
             DrawTextW(mem_dc, inst_txt.as_ptr(), -1, &mut inst_rect, DT_LEFT | DT_SINGLELINE);
 

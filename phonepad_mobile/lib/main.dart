@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'core/network/bluetooth_transport.dart';
 import 'core/network/discovery_client.dart';
 import 'core/network/tcp_transport.dart';
 import 'core/network/transport.dart';
 import 'core/theme/colors.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/connection/presentation/connection_hub.dart';
+import 'features/splash/presentation/splash_screen.dart';
 import 'features/touch/presentation/touch_surface.dart';
 
 void main() {
@@ -36,18 +36,15 @@ class PhonePadApp extends StatefulWidget {
 }
 
 class _PhonePadAppState extends State<PhonePadApp> {
-  final BluetoothTransport _btTransport = BluetoothTransport();
   final TcpTransport _tcpTransport = TcpTransport();
   final DiscoveryClient _discoveryClient = DiscoveryClient();
 
-  late ITransport _activeTransport;
-  bool _useBluetooth = false;
   String _destination = 'Auto-Scanning for PC...';
+  bool _showSplash = true;
 
   @override
   void initState() {
     super.initState();
-    _activeTransport = _tcpTransport;
 
     // Start background Wi-Fi discovery probe
     _initAutoDiscovery();
@@ -60,26 +57,21 @@ class _PhonePadAppState extends State<PhonePadApp> {
     _discoveryClient.hostsStream.listen((hosts) {
       if (mounted &&
           hosts.isNotEmpty &&
-          _activeTransport.status == ConnectionStatus.disconnected &&
-          !_useBluetooth) {
+          _tcpTransport.status == ConnectionStatus.disconnected) {
         final firstHost = hosts.first;
-        _connectHost(firstHost.destination, false, firstHost.name, pin: firstHost.pin);
+        _connectHost(firstHost.destination, firstHost.name, pin: firstHost.pin);
       }
     });
   }
 
-  Future<void> _connectHost(String address, bool isBluetooth, String displayName, {int pin = 0}) async {
+  Future<void> _connectHost(String address, String displayName, {int pin = 0}) async {
     try {
-      await _activeTransport.disconnect();
-      if (!isBluetooth) {
-        _tcpTransport.setPin(pin);
-      }
+      await _tcpTransport.disconnect();
+      _tcpTransport.setPin(pin);
       setState(() {
-        _useBluetooth = isBluetooth;
-        _activeTransport = isBluetooth ? _btTransport : _tcpTransport;
         _destination = displayName;
       });
-      await _activeTransport.connect(address);
+      await _tcpTransport.connect(address);
     } catch (_) {
       // Handled via transport status stream
     }
@@ -93,11 +85,9 @@ class _PhonePadAppState extends State<PhonePadApp> {
       builder: (sheetContext) {
         return ConnectionHubModal(
           discoveryClient: _discoveryClient,
-          bluetoothTransport: _btTransport,
           currentDestination: _destination,
-          isBluetooth: _useBluetooth,
-          onConnect: (address, isBt, name, pin) {
-            _connectHost(address, isBt, name, pin: pin);
+          onConnect: (address, name, pin) {
+            _connectHost(address, name, pin: pin);
           },
         );
       },
@@ -107,7 +97,7 @@ class _PhonePadAppState extends State<PhonePadApp> {
   @override
   void dispose() {
     _discoveryClient.dispose();
-    _activeTransport.disconnect();
+    _tcpTransport.disconnect();
     super.dispose();
   }
 
@@ -136,11 +126,24 @@ class _PhonePadAppState extends State<PhonePadApp> {
             ),
           ),
           home: Builder(
-            builder: (innerContext) => TouchSurface(
-              transport: _activeTransport,
-              destination: _destination,
-              onSettingsTap: () => _showConnectionModal(innerContext),
-            ),
+            builder: (innerContext) {
+              if (_showSplash) {
+                return SplashScreen(
+                  onFinish: () {
+                    if (mounted) {
+                      setState(() {
+                        _showSplash = false;
+                      });
+                    }
+                  },
+                );
+              }
+              return TouchSurface(
+                transport: _tcpTransport,
+                destination: _destination,
+                onSettingsTap: () => _showConnectionModal(innerContext),
+              );
+            },
           ),
         );
       },

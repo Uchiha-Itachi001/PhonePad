@@ -13,7 +13,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_MEDIA_PLAY_PAUSE, VK_MENU, VK_MULTIPLY, VK_NEXT, VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2,
     VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9,
     VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_SUBTRACT, VK_TAB, VK_UP,
-    VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP, VkKeyScanW,
+    VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP,
 };
 
 const WHEEL_DELTA: i32 = 120;
@@ -32,14 +32,12 @@ impl WindowsInjector {
         unsafe extern "system" {
             fn OpenInputDesktop(dwflags: u32, finherit: i32, dwdesiredaccess: u32) -> *mut core::ffi::c_void;
             fn SetThreadDesktop(hdesktop: *mut core::ffi::c_void) -> i32;
-            fn CloseDesktop(hdesktop: *mut core::ffi::c_void) -> i32;
         }
         unsafe {
             const DESKTOP_ALL: u32 = 0x01FF;
             let desk = OpenInputDesktop(0, 0, DESKTOP_ALL);
             if !desk.is_null() {
                 SetThreadDesktop(desk);
-                CloseDesktop(desk);
             }
         }
     }
@@ -115,25 +113,6 @@ impl WindowsInjector {
     }
 
     fn send_unicode_char(code: u16) {
-        // First try translating Unicode char to virtual key for native Windows app compatibility
-        let vkey_scan = unsafe { VkKeyScanW(code) };
-        if vkey_scan != -1 {
-            let vk = (vkey_scan & 0xFF) as u16;
-            let shift_state = (vkey_scan >> 8) & 0xFF;
-            if shift_state == 0 {
-                Self::tap_single_key(vk);
-                return;
-            } else if shift_state == 1 {
-                Self::send_key(VK_SHIFT, false);
-                std::thread::sleep(std::time::Duration::from_millis(4));
-                Self::tap_single_key(vk);
-                std::thread::sleep(std::time::Duration::from_millis(4));
-                Self::send_key(VK_SHIFT, true);
-                return;
-            }
-        }
-
-        // Direct Unicode injection fallback for international characters and emojis
         unsafe {
             let kb_down = KEYBDINPUT {
                 wVk: 0,
@@ -159,16 +138,22 @@ impl WindowsInjector {
                 Anonymous: INPUT_0 { ki: kb_up },
             };
 
-            let res_down = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+            let mut res_down = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
             if res_down == 0 {
                 Self::ensure_attached_to_input_desktop();
-                let _ = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+                res_down = SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+                if res_down == 0 {
+                    log::warn!("SendInput unicode char down returned 0 for U+{:04X}", code);
+                }
             }
             std::thread::sleep(std::time::Duration::from_millis(4));
-            let res_up = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+            let mut res_up = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
             if res_up == 0 {
                 Self::ensure_attached_to_input_desktop();
-                let _ = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+                res_up = SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+                if res_up == 0 {
+                    log::warn!("SendInput unicode char up returned 0 for U+{:04X}", code);
+                }
             }
         }
     }

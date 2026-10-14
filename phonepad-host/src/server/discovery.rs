@@ -6,11 +6,28 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Returns the primary outbound local IPv4 address of the machine.
+/// Uses multiple probe targets to succeed even on offline Wi-Fi, LANs, and mobile hotspots.
 pub fn get_local_ip() -> String {
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("8.8.8.8:80").is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                return addr.ip().to_string();
+    let targets = [
+        "8.8.8.8:80",
+        "1.1.1.1:80",
+        "192.168.1.1:80",
+        "192.168.0.1:80",
+        "192.168.137.1:80",
+        "192.168.43.1:80",
+        "10.0.0.1:80",
+        "172.16.0.1:80",
+    ];
+
+    for target in &targets {
+        if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+            if socket.connect(target).is_ok() {
+                if let Ok(addr) = socket.local_addr() {
+                    let ip = addr.ip().to_string();
+                    if ip != "127.0.0.1" && ip != "0.0.0.0" {
+                        return ip;
+                    }
+                }
             }
         }
     }
@@ -75,10 +92,41 @@ pub fn spawn_discovery_beacon(state: Arc<HostState>) {
                             probe_reply_count = 0;
                         }
 
-                        if probe_reply_count < 10 {
+                        if probe_reply_count < 20 {
                             probe_reply_count += 1;
-                            log::info!("🔍 Discovery probe received from {}, sending beacon", src);
-                            let _ = socket.send_to(beacon_payload.as_bytes(), src);
+                            log::info!("🔍 Discovery probe received from {}", src);
+
+                            // Dynamically identify the exact local interface IP that connects to src
+                            let resolved_ip = if let Ok(probe_sock) = UdpSocket::bind("0.0.0.0:0") {
+                                if probe_sock.connect(src).is_ok() {
+                                    if let Ok(local_addr) = probe_sock.local_addr() {
+                                        let ip_str = local_addr.ip().to_string();
+                                        if ip_str != "127.0.0.1" && ip_str != "0.0.0.0" {
+                                            if let Ok(mut g) = state.local_ip.lock() {
+                                                if *g != ip_str {
+                                                    *g = ip_str.clone();
+                                                }
+                                            }
+                                            Some(ip_str)
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            let active_ip = resolved_ip.unwrap_or_else(|| {
+                                state.local_ip.lock().map(|g| g.clone()).unwrap_or_else(|_| "127.0.0.1".to_string())
+                            });
+
+                            let direct_payload = format!("PHONEPAD_HOST:{}:{}:{}:{}", active_ip, state.port, state.computer_name, state.auth_pin);
+                            let _ = socket.send_to(direct_payload.as_bytes(), src);
                         } else {
                             log::warn!("🚨 Rate limit: Dropping excessive discovery probe from {}", src);
                         }

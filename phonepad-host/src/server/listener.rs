@@ -30,7 +30,7 @@ pub async fn run_tcp_server(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(config.bind_addr).await?;
     log::info!("⚡ PhonePad Host listening on {}", config.bind_addr);
-    log::info!("Ready for client connections (via Bluetooth RFCOMM bridge, ADB reverse, or direct LAN).");
+    log::info!("Ready for client connections (via Wi-Fi LAN or ADB reverse).");
 
     loop {
         match listener.accept().await {

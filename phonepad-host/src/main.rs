@@ -45,16 +45,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // 1. Spawn UDP Auto-Discovery responder and beacon
     spawn_discovery_beacon(state.clone());
 
-    // 2. Spawn native Windows Bluetooth RFCOMM SPP server in background thread
-    #[cfg(windows)]
-    {
-        let bt_timeout = std::time::Duration::from_secs(30);
-        std::thread::spawn(move || {
-            if let Err(e) = server::bluetooth::windows_bth::run_bluetooth_rfcomm_server(bt_timeout) {
-                log::warn!("Bluetooth RFCOMM server info: {}", e);
-            }
-        });
-    }
 
     // 3. Spawn Tokio async runtime for TCP server and HTTP REST Control API
     let tcp_state = state.clone();

@@ -1,6 +1,5 @@
 //! Server and connection management module.
 
-pub mod bluetooth;
 pub mod connection;
 pub mod discovery;
 pub mod http_api;

@@ -23,7 +23,6 @@ pub struct HostState {
     pub local_ip: Mutex<String>,
     pub port: u16,
     pub computer_name: String,
-    pub bluetooth_status: Mutex<String>,
     last_second_time: Mutex<Instant>,
     second_packet_counter: AtomicU32,
 }
@@ -48,7 +47,6 @@ impl HostState {
             local_ip: Mutex::new(local_ip),
             port,
             computer_name,
-            bluetooth_status: Mutex::new("Ready (SPP UUID: 00001101...)".to_string()),
             last_second_time: Mutex::new(Instant::now()),
             second_packet_counter: AtomicU32::new(0),
         }
@@ -107,12 +105,6 @@ impl HostState {
                 self.packets_per_sec.store(pps, Ordering::Relaxed);
                 *last_time = Instant::now();
             }
-        }
-    }
-
-    pub fn set_bluetooth_status(&self, status: &str) {
-        if let Ok(mut s) = self.bluetooth_status.lock() {
-            *s = status.to_string();
         }
     }
 }

@@ -58,10 +58,9 @@ pub async fn run_http_api(state: Arc<HostState>, port: u16) -> Result<(), Box<dy
                 let natural_scroll = state.natural_scroll.load(std::sync::atomic::Ordering::Relaxed);
                 let gestures_enabled = state.gestures_enabled.load(std::sync::atomic::Ordering::Relaxed);
                 let tap_to_click = state.tap_to_click.load(std::sync::atomic::Ordering::Relaxed);
-                let bt_status = state.bluetooth_status.lock().map(|s| s.clone()).unwrap_or_else(|_| "Ready".into());
 
                 let json = format!(
-                    r#"{{"isRunning":true,"isServiceEnabled":{},"isConnected":{},"localIp":"{}","port":{},"computerName":"{}","authPin":{},"clientName":"{}","clientTransport":"{}","packetsPerSec":{},"totalPackets":{},"sensitivity":{:.2},"naturalScroll":{},"gesturesEnabled":{},"tapToClick":{},"bluetoothStatus":"{}"}}"#,
+                    r#"{{"isRunning":true,"isServiceEnabled":{},"isConnected":{},"localIp":"{}","port":{},"computerName":"{}","authPin":{},"clientName":"{}","clientTransport":"{}","packetsPerSec":{},"totalPackets":{},"sensitivity":{:.2},"naturalScroll":{},"gesturesEnabled":{},"tapToClick":{}}}"#,
                     is_service_enabled,
                     is_connected,
                     local_ip,
@@ -75,8 +74,7 @@ pub async fn run_http_api(state: Arc<HostState>, port: u16) -> Result<(), Box<dy
                     sensitivity,
                     natural_scroll,
                     gestures_enabled,
-                    tap_to_click,
-                    bt_status
+                    tap_to_click
                 );
 
                 let response = format!(
