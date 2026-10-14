@@ -1,5 +1,4 @@
-import React from "react";
-import { Minus, X, Smartphone } from "lucide-react";
+import { Minus, X } from "lucide-react";
 import { tauriBridge } from "../services/tauriBridge";
 
 export const Header: React.FC = () => {
@@ -7,8 +6,8 @@ export const Header: React.FC = () => {
     <header className="app-header" data-tauri-drag-region>
       <div className="drag-handle" data-tauri-drag-region>
         <div className="brand-badge" data-tauri-drag-region>
-          <div className="brand-icon-box">
-            <Smartphone size={14} />
+          <div className="brand-icon-box" style={{ overflow: "hidden", padding: 0 }}>
+            <img src="/icon.png" alt="PhonePad" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "6px" }} />
           </div>
           <span className="brand-title" data-tauri-drag-region>
             PhonePad Host

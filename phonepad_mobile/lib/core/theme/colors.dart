@@ -3,25 +3,27 @@ import 'package:flutter/material.dart';
 /// PhonePad Color Palette adhering to User Preference DNA.
 abstract class PhonePadColors {
   /// Dark base background
-  static const Color backgroundPrimary = Color(0xFF070C14);
+  static const Color backgroundPrimary = Color(0xFF060B13);
 
   /// Secondary dark card/surface
-  static const Color backgroundSecondary = Color(0xFF0B111C);
+  static const Color backgroundSecondary = Color(0xFF0C1424);
 
-  /// Emerald main accent
-  static const Color accentEmerald = Color(0xFF10B981);
+  /// Electric Blue main accent (Matches App Icon & Remote Deck Design)
+  static const Color accentBlue = Color(0xFF007AFF);
+  static const Color accentPrimary = Color(0xFF0084FF);
 
-  /// Teal secondary accent
-  static const Color accentTeal = Color(0xFF14B8A6);
+  /// Legacy emerald alias for backwards compatibility
+  static const Color accentEmerald = Color(0xFF007AFF);
 
-  /// Cyan highlight
-  static const Color accentCyan = Color(0xFF06B6D4);
+  /// Cyan secondary accent
+  static const Color accentTeal = Color(0xFF00E5FF);
+  static const Color accentCyan = Color(0xFF38BDF8);
 
-  /// Soft emerald ambient glow
-  static const Color glowSoft = Color(0x6610B981);
+  /// Soft electric blue ambient glow
+  static const Color glowSoft = Color(0x66007AFF);
 
-  /// Strong active emerald glow
-  static const Color glowActive = Color(0x9910B981);
+  /// Strong active electric blue glow
+  static const Color glowActive = Color(0x99007AFF);
 
   /// White text primary
   static const Color textPrimary = Color(0xFFF1F5F9);

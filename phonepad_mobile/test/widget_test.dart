@@ -8,6 +8,7 @@ import 'package:phonepad_mobile/core/protocol/handshake.dart';
 import 'package:phonepad_mobile/core/protocol/keys.dart';
 import 'package:phonepad_mobile/core/protocol/opcode.dart';
 import 'package:phonepad_mobile/core/protocol/packet.dart';
+import 'package:phonepad_mobile/features/modes/models/surface_mode.dart';
 import 'package:phonepad_mobile/features/modes/presentation/numpad_surface.dart';
 import 'package:phonepad_mobile/features/modes/presentation/remote_surface.dart';
 import 'package:phonepad_mobile/core/theme/theme_controller.dart';
@@ -94,10 +95,11 @@ void main() {
         transport: mockTransport,
         destination: '127.0.0.1:4242',
         onSettingsTap: () {},
+        initialMode: SurfaceMode.trackpad,
       ),
     ));
 
-    expect(find.textContaining('PhonePad'), findsOneWidget);
+    expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
 
     // Simulate drag gesture on touch surface
     final gesture = await tester.startGesture(const Offset(200, 300));
@@ -121,6 +123,7 @@ void main() {
         transport: mockTransport,
         destination: '127.0.0.1:4242',
         onSettingsTap: () {},
+        initialMode: SurfaceMode.trackpad,
       ),
     ));
 
@@ -143,6 +146,7 @@ void main() {
         transport: mockTransport,
         destination: '127.0.0.1:4242',
         onSettingsTap: () {},
+        initialMode: SurfaceMode.trackpad,
       ),
     ));
 
@@ -177,6 +181,10 @@ void main() {
         ),
       ),
     ));
+
+    // Switch to 123 NUMPAD mode (since Keyboard is now default)
+    await tester.tap(find.text('123 NUMPAD'));
+    await tester.pumpAndSettle();
 
     // Tap number 7 button
     await tester.tap(find.text('7'));
@@ -293,7 +301,7 @@ void main() {
     expect(mockTransport.sentPackets.last.dx, equals(MediaKey.volumeUp.code));
   });
 
-  testWidgets('TouchSurface mode selector switches between Trackpad, Numpad, and Remote', (WidgetTester tester) async {
+  testWidgets('TouchSurface left rail switches between Trackpad, Keyboard, and Remote', (WidgetTester tester) async {
     final mockTransport = MockTransport();
 
     await tester.pumpWidget(MaterialApp(
@@ -301,27 +309,32 @@ void main() {
         transport: mockTransport,
         destination: '127.0.0.1:4242',
         onSettingsTap: () {},
+        initialMode: SurfaceMode.trackpad,
       ),
     ));
 
     // Initially in Trackpad mode
-    expect(find.text('Numpad'), findsOneWidget);
-    expect(find.text('Remote'), findsOneWidget);
-    expect(find.text('ENTER'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.settings_remote_rounded), findsOneWidget);
+    expect(find.text('SPACE'), findsNothing);
 
-    // Switch to Numpad mode
-    await tester.tap(find.text('Numpad'));
+    // Switch to Keyboard mode via Left Rail icon
+    await tester.tap(find.byIcon(Icons.keyboard_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.text('ENTER'), findsOneWidget);
+    // In Keyboard mode, Keyboard is active by default with spacebar & function keys
+    expect(find.text('SPACE'), findsOneWidget);
+    expect(find.text('Esc'), findsOneWidget);
+    expect(find.text('F1'), findsOneWidget);
 
-    // Switch to Remote mode
-    await tester.tap(find.text('Remote'));
+    // Switch to Remote mode via Left Rail icon
+    await tester.tap(find.byIcon(Icons.settings_remote_rounded));
     await tester.pumpAndSettle();
 
     expect(find.text('PREV'), findsOneWidget);
     expect(find.text('NEXT'), findsOneWidget);
-    expect(find.text('Play / Pause'), findsOneWidget);
+    expect(find.text('PLAY'), findsOneWidget);
+    expect(find.text('MUTE'), findsOneWidget);
   });
 
   test('PowerGovernor auto-dims after inactivity and restores on recordActivity', () async {
@@ -624,14 +637,7 @@ void main() {
     expect(actionTapped, isTrue);
   });
 
-  testWidgets('TouchSurface integrates LiquidSpeedDial and LiquidGlass clickpads', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 2.5;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
+  testWidgets('TouchSurface renders left navigation rail and clean trackpad surface', (WidgetTester tester) async {
     final mockTransport = MockTransport();
 
     await tester.pumpWidget(MaterialApp(
@@ -639,43 +645,19 @@ void main() {
         transport: mockTransport,
         destination: '127.0.0.1:4242',
         onSettingsTap: () {},
+        initialMode: SurfaceMode.trackpad,
       ),
     ));
 
-    // LiquidSpeedDial trigger is rendered on trackpad
-    expect(find.byType(LiquidSpeedDial), findsOneWidget);
-    expect(find.text('LEFT CLICK'), findsOneWidget);
-    expect(find.text('RIGHT CLICK'), findsOneWidget);
+    // Left rail icons rendered
+    expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.mouse_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.settings_remote_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
 
-    // Tap LEFT CLICK pad -> dispatches tapLeft packet
-    await tester.tap(find.text('LEFT CLICK'));
-    await tester.pumpAndSettle();
-
-    expect(mockTransport.sentPackets.any((p) => p.opcode == Opcode.tapLeft), isTrue);
-
-    // Tap RIGHT CLICK pad -> dispatches tapRight packet
-    await tester.tap(find.text('RIGHT CLICK'));
-    await tester.pumpAndSettle();
-
-    expect(mockTransport.sentPackets.any((p) => p.opcode == Opcode.tapRight), isTrue);
-
-    // Open LiquidSpeedDial
-    await tester.tap(find.byIcon(Icons.add_rounded));
-    await tester.pumpAndSettle();
-
-    // Verify actions visible
-    expect(find.byIcon(Icons.splitscreen_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.desktop_windows_rounded), findsOneWidget);
-
-    // Tap Show Desktop action
-    await tester.tap(find.byIcon(Icons.desktop_windows_rounded));
-    await tester.pumpAndSettle();
-
-    // Verify 3-finger swipe packet was dispatched for Show Desktop
-    final desktopPackets = mockTransport.sentPackets
-        .where((p) => p.opcode == Opcode.move && p.dy == 30 && (p.flags & 0x01 != 0))
-        .toList();
-    expect(desktopPackets.isNotEmpty, isTrue);
+    // Trackpad digitizer surface rendered
+    expect(find.byType(CustomPaint), findsWidgets);
   });
 
   testWidgets('SplashScreen renders circling particles, border glow badge, and progress bar', (WidgetTester tester) async {

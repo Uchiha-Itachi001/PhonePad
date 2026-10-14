@@ -5,23 +5,22 @@ import '../../../core/network/transport.dart';
 import '../../../core/power/power_governor.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
+import '../../../core/theme/colors.dart';
 import '../../../core/theme/liquid_glass_container.dart';
 import '../../../core/theme/spring_bounce_tap.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../modes/models/surface_mode.dart';
-import '../../modes/presentation/mode_selector.dart';
 import '../../modes/presentation/numpad_surface.dart';
 import '../../modes/presentation/remote_surface.dart';
 import '../logic/touch_detector.dart';
-import 'liquid_speed_dial.dart';
 import 'samsung_dot_matrix_painter.dart';
-import 'status_bar.dart';
 
 class TouchSurface extends StatefulWidget {
   final ITransport transport;
   final String destination;
   final VoidCallback onSettingsTap;
   final PowerGovernor? powerGovernor;
+  final SurfaceMode initialMode;
 
   const TouchSurface({
     super.key,
@@ -29,6 +28,7 @@ class TouchSurface extends StatefulWidget {
     required this.destination,
     required this.onSettingsTap,
     this.powerGovernor,
+    this.initialMode = SurfaceMode.remote,
   });
 
   @override
@@ -40,7 +40,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
   final ValueNotifier<int> _touchNotifier = ValueNotifier<int>(0);
   late final PowerGovernor _powerGovernor;
   late final bool _ownsGovernor;
-  SurfaceMode _currentMode = SurfaceMode.trackpad;
+  late SurfaceMode _currentMode;
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
   Timer? _heartbeatTimer;
@@ -51,6 +51,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
   @override
   void initState() {
     super.initState();
+    _currentMode = widget.initialMode;
     _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
     _status = widget.transport.status;
     _ownsGovernor = false;
@@ -107,20 +108,6 @@ class _TouchSurfaceState extends State<TouchSurface> {
     super.dispose();
   }
 
-  void _toggleOrientation(bool isLandscape) {
-    if (isLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-    } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    }
-  }
-
   void _dispatchPacket(PhonePadPacket? packet) {
     if (packet != null) {
       widget.transport.sendPacket(packet);
@@ -140,131 +127,72 @@ class _TouchSurfaceState extends State<TouchSurface> {
         return Scaffold(
           backgroundColor: theme.backgroundPrimary,
           body: SafeArea(
-            child: OrientationBuilder(
-              builder: (context, orientation) {
-                final isLandscape = orientation == Orientation.landscape;
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      // Sleek Left Dock: minimal horizontal space, icons only
+                      _buildLeftRail(theme),
+                      const SizedBox(width: 8),
 
-                return Stack(
-                  children: [
-                    Column(
-                      children: [
-                        if (isLandscape) ...[
-                          // Landscape Compact Top Bar (Status + Mode selector side by side with identical 44px height)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-                            child: SizedBox(
-                              height: 44,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: PhonePadStatusBar(
-                                      status: _status,
-                                      destination: widget.destination,
-                                      pointerCount: _detector.pointerCount,
-                                      onSettingsTap: widget.onSettingsTap,
-                                      onToggleOrientation: () => _toggleOrientation(isLandscape),
-                                      isLandscape: true,
-                                      margin: EdgeInsets.zero,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ModeSelector(
-                                    currentMode: _currentMode,
-                                    isLandscape: true,
-                                    onModeChanged: (mode) {
-                                      setState(() {
-                                        _currentMode = mode;
-                                      });
-                                      _powerGovernor.recordActivity();
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else ...[
-                          // Portrait Top Status Bar
-                          PhonePadStatusBar(
-                            status: _status,
-                            destination: widget.destination,
-                            pointerCount: _detector.pointerCount,
-                            onSettingsTap: widget.onSettingsTap,
-                            onToggleOrientation: () => _toggleOrientation(isLandscape),
-                            isLandscape: false,
-                          ),
-
-                          // Portrait Mode Selector Bar
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-                            child: ModeSelector(
-                              currentMode: _currentMode,
-                              onModeChanged: (mode) {
-                                setState(() {
-                                  _currentMode = mode;
-                                });
-                                _powerGovernor.recordActivity();
-                              },
-                            ),
-                          ),
-                        ],
-
-                        // Main Interactive Surface Area
-                        Expanded(
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 250),
-                            opacity: _powerGovernor.isDimmed ? 0.05 : 1.0,
-                            child: _buildSurfaceContent(isLandscape, theme),
-                          ),
+                      // Main Interactive Surface Area (Full Widescreen Canvas)
+                      Expanded(
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 250),
+                          opacity: _powerGovernor.isDimmed ? 0.05 : 1.0,
+                          child: _buildSurfaceContent(theme),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                ),
 
-                    // AMOLED Power Saver Tap-to-Wake Overlay
-                    if (_powerGovernor.isDimmed)
-                      Positioned.fill(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            _powerGovernor.recordActivity();
-                          },
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.92),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.touch_app_rounded,
-                                    color: theme.accentPrimary.withValues(alpha: 0.8),
-                                    size: 40,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  const Text(
-                                    'AMOLED POWER SAVER',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      letterSpacing: 2.0,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Tap anywhere to wake display in 0ms',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.5),
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
+                // AMOLED Power Saver Tap-to-Wake Overlay
+                if (_powerGovernor.isDimmed)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        _powerGovernor.recordActivity();
+                      },
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.92),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.touch_app_rounded,
+                                color: theme.accentPrimary.withValues(alpha: 0.8),
+                                size: 40,
                               ),
-                            ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'AMOLED POWER SAVER',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  letterSpacing: 2.0,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Tap anywhere to wake display in 0ms',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                  ],
-                );
-              },
+                    ),
+                  ),
+              ],
             ),
           ),
         );
@@ -272,11 +200,195 @@ class _TouchSurfaceState extends State<TouchSurface> {
     );
   }
 
-  Widget _buildSurfaceContent(bool isLandscape, PhonePadThemeData theme) {
+  /// Sleek, minimal vertical icon-only navigation and status dock.
+  Widget _buildLeftRail(PhonePadThemeData theme) {
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (_status) {
+      case ConnectionStatus.connected:
+        statusColor = theme.accentPrimary;
+        statusIcon = Icons.wifi_rounded;
+        break;
+      case ConnectionStatus.connecting:
+      case ConnectionStatus.reconnecting:
+        statusColor = Colors.amber;
+        statusIcon = Icons.wifi_find_rounded;
+        break;
+      case ConnectionStatus.disconnected:
+        statusColor = PhonePadColors.errorRed;
+        statusIcon = Icons.wifi_off_rounded;
+        break;
+    }
+
+    return LiquidGlassContainer(
+      width: 52,
+      blur: 16.0,
+      borderRadius: BorderRadius.circular(18),
+      backgroundColor: theme.backgroundSecondary.withValues(alpha: 0.90),
+      borderGradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: theme.isDark ? 0.20 : 0.5),
+          theme.accentPrimary.withValues(alpha: 0.12),
+          Colors.white.withValues(alpha: 0.04),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Column(
+        children: [
+          // Connection Status Icon (Icon only, no text)
+          SpringBounceTap(
+            onTap: widget.onSettingsTap,
+            child: Tooltip(
+              message: _status == ConnectionStatus.connected ? 'Connected' : 'Connection Hub',
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor.withValues(alpha: 0.15),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.4),
+                    width: 1.2,
+                  ),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(statusIcon, color: statusColor, size: 20),
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: statusColor.withValues(alpha: 0.7),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: 24,
+            height: 1,
+            color: theme.borderSubtle,
+          ),
+          const SizedBox(height: 10),
+
+          // Mode Selector Icons
+          ...SurfaceMode.values.map((mode) {
+            final isSelected = mode == _currentMode;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: SpringBounceTap(
+                pressedScale: 0.90,
+                bounceOvershoot: 1.06,
+                onTap: () {
+                  if (!isSelected) {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _currentMode = mode;
+                    });
+                    _powerGovernor.recordActivity();
+                  }
+                },
+                child: Tooltip(
+                  message: mode.title,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      gradient: isSelected
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                theme.accentPrimary.withValues(alpha: 0.35),
+                                theme.accentSecondary.withValues(alpha: 0.20),
+                              ],
+                            )
+                          : null,
+                      color: isSelected ? null : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isSelected
+                            ? theme.accentPrimary.withValues(alpha: 0.7)
+                            : Colors.transparent,
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        if (isSelected)
+                          BoxShadow(
+                            color: theme.accentPrimary.withValues(alpha: 0.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        mode.icon,
+                        size: 20,
+                        color: isSelected
+                            ? theme.accentPrimary
+                            : theme.textSecondary.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          const Spacer(),
+
+          // Settings Cog Icon
+          SpringBounceTap(
+            onTap: widget.onSettingsTap,
+            child: Tooltip(
+              message: 'Settings',
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.surfaceCard.withValues(alpha: 0.6),
+                  border: Border.all(color: theme.borderSubtle),
+                ),
+                child: Icon(
+                  Icons.tune_rounded,
+                  size: 18,
+                  color: theme.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSurfaceContent(PhonePadThemeData theme) {
     switch (_currentMode) {
       case SurfaceMode.trackpad:
-        return _buildTrackpadDigitizer(isLandscape, theme);
-      case SurfaceMode.numpad:
+        return _buildTrackpadDigitizer(theme);
+      case SurfaceMode.keyboard:
         return NumpadSurface(
           transport: widget.transport,
           onActivity: _powerGovernor.recordActivity,
@@ -289,379 +401,146 @@ class _TouchSurfaceState extends State<TouchSurface> {
     }
   }
 
-  Widget _buildTrackpadDigitizer(bool isLandscape, PhonePadThemeData theme) {
+  /// Clean, crisp trackpad surface without blue glow, speed dial, or portrait click pads.
+  Widget _buildTrackpadDigitizer(PhonePadThemeData theme) {
     final density = ThemeController.instance.dotDensity;
 
-    return Column(
-      children: [
-        // Main Trackpad Surface
-        Expanded(
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: isLandscape ? 12 : 16),
-            decoration: BoxDecoration(
-              color: theme.backgroundSecondary.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: _detector.pointerCount > 0
-                    ? theme.accentPrimary.withValues(alpha: 0.45)
-                    : theme.borderSubtle,
-                width: 1.5,
-              ),
-              boxShadow: [
-                if (_detector.pointerCount > 0)
-                  BoxShadow(
-                    color: theme.accentPrimary.withValues(alpha: 0.12),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (event) {
-                        _powerGovernor.recordActivity();
-                        HapticFeedback.selectionClick();
-                        final packet = _detector.onPointerDown(event);
-                        _dispatchPacket(packet);
-                        _touchNotifier.value++;
-                        setState(() {});
-                      },
-                      onPointerMove: (event) {
-                        _powerGovernor.recordActivity();
-                        final packet = _detector.onPointerMove(event);
-                        _dispatchPacket(packet);
-                        _touchNotifier.value++; // 120Hz zero-lag canvas repaint without widget tree rebuild!
-                      },
-                      onPointerUp: (event) {
-                        _powerGovernor.recordActivity();
-                        final packet = _detector.onPointerUp(event);
-                        _dispatchPacket(packet);
-                        _touchNotifier.value++;
-                        setState(() {});
-                      },
-                      onPointerCancel: (event) {
-                        _powerGovernor.recordActivity();
-                        final packet = _detector.onPointerCancel(event);
-                        _dispatchPacket(packet);
-                        _touchNotifier.value++;
-                        setState(() {});
-                      },
-                      child: CustomPaint(
-                        painter: SamsungDotMatrixPainter(
-                          activePointers: _detector.activePointers,
-                          repaint: _touchNotifier,
-                          theme: theme,
-                          dotSpacing: density.spacing,
-                          baseDotRadius: density.baseRadius,
-                          maxDotRadius: density.maxRadius,
-                        ),
-                        child: Stack(
-                          children: [
-                            // Center Helper / Connect Banner
-                            if (_detector.pointerCount == 0)
-                              Center(
-                                child: _status == ConnectionStatus.connected
-                                    ? Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.touch_app_rounded,
-                                            color: theme.textSecondary.withValues(alpha: 0.25),
-                                            size: isLandscape ? 28 : 36,
-                                          ),
-                                          SizedBox(height: isLandscape ? 6 : 12),
-                                          Text(
-                                            'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontSize: isLandscape ? 10 : 11,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: 1.5,
-                                              color: theme.textSecondary.withValues(alpha: 0.35),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: EdgeInsets.all(isLandscape ? 10 : 16),
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: theme.accentPrimary.withValues(alpha: 0.1),
-                                              border: Border.all(
-                                                color: theme.accentPrimary.withValues(alpha: 0.3),
-                                              ),
-                                            ),
-                                            child: Icon(
-                                              Icons.wifi_tethering_rounded,
-                                              color: theme.accentPrimary,
-                                              size: isLandscape ? 24 : 32,
-                                            ),
-                                          ),
-                                          SizedBox(height: isLandscape ? 8 : 16),
-                                          Text(
-                                            'NOT CONNECTED TO PC',
-                                            style: TextStyle(
-                                              color: theme.textPrimary,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1.2,
-                                              fontSize: isLandscape ? 12 : 14,
-                                            ),
-                                          ),
-                                          SizedBox(height: isLandscape ? 4 : 8),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: theme.accentPrimary,
-                                              foregroundColor: Colors.black,
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: isLandscape ? 18 : 24,
-                                                vertical: isLandscape ? 8 : 12,
-                                              ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16),
-                                              ),
-                                              elevation: 8,
-                                              shadowColor: theme.accentPrimary.withValues(alpha: 0.5),
-                                            ),
-                                            onPressed: widget.onSettingsTap,
-                                            icon: const Icon(Icons.bolt_rounded, size: 20),
-                                            label: const Text(
-                                              'Connect PC Now',
-                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Floating Liquid Speed Dial FAB (derived from developer-bucket)
-                  Positioned(
-                    bottom: isLandscape ? 12 : 16,
-                    right: isLandscape ? 12 : 16,
-                    child: LiquidSpeedDial(
-                      onToggle: () {
-                        _powerGovernor.recordActivity();
-                      },
-                      actions: [
-                        LiquidDialAction(
-                          icon: Icons.splitscreen_rounded,
-                          label: 'Task View (Win+Tab)',
-                          color: theme.accentSecondary,
-                          onTap: () {
-                            _powerGovernor.recordActivity();
-                            _dispatchPacket(const PhonePadPacket(
-                              opcode: Opcode.move,
-                              dx: 0,
-                              dy: -30,
-                              flags: 0x01 | (3 << 1),
-                            ));
-                          },
-                        ),
-                        LiquidDialAction(
-                          icon: Icons.desktop_windows_rounded,
-                          label: 'Show Desktop (Win+D)',
-                          color: theme.accentPrimary,
-                          onTap: () {
-                            _powerGovernor.recordActivity();
-                            _dispatchPacket(const PhonePadPacket(
-                              opcode: Opcode.move,
-                              dx: 0,
-                              dy: 30,
-                              flags: 0x01 | (3 << 1),
-                            ));
-                          },
-                        ),
-                        LiquidDialAction(
-                          icon: Icons.dialpad_rounded,
-                          label: 'Numpad & Keyboard Deck',
-                          color: const Color(0xFF38BDF8),
-                          onTap: () {
-                            _powerGovernor.recordActivity();
-                            setState(() {
-                              _currentMode = SurfaceMode.numpad;
-                            });
-                          },
-                        ),
-                        LiquidDialAction(
-                          icon: Icons.tune_rounded,
-                          label: 'Settings Hub',
-                          color: const Color(0xFFA78BFA),
-                          onTap: () {
-                            _powerGovernor.recordActivity();
-                            widget.onSettingsTap();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.backgroundSecondary.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: theme.borderSubtle,
+          width: 1.2,
         ),
-
-        // Bottom Tactile Click Deck (Shown only in portrait mode)
-        if (!isLandscape)
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: _buildClickPad(
-                    title: 'LEFT CLICK',
-                    subtitle: 'PRIMARY',
-                    icon: Icons.mouse_rounded,
-                    theme: theme,
-                    isLandscape: isLandscape,
-                    isPrimary: true,
-                    onTap: () {
-                      HapticFeedback.mediumImpact();
-                      _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapLeft));
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 1,
-                  child: _buildClickPad(
-                    title: 'RIGHT CLICK',
-                    subtitle: 'CONTEXT',
-                    icon: Icons.menu_open_rounded,
-                    theme: theme,
-                    isLandscape: isLandscape,
-                    isPrimary: false,
-                    onTap: () {
-                      HapticFeedback.heavyImpact();
-                      _dispatchPacket(const PhonePadPacket(opcode: Opcode.tapRight));
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildClickPad({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required PhonePadThemeData theme,
-    required bool isLandscape,
-    required bool isPrimary,
-    required VoidCallback onTap,
-  }) {
-    final accent = isPrimary ? theme.accentPrimary : theme.accentSecondary;
-
-    return SpringBounceTap(
-      onTap: onTap,
-      pressedScale: 0.94,
-      bounceOvershoot: 1.05,
-      child: LiquidGlassContainer(
-        blur: 16,
-        borderRadius: BorderRadius.circular(20),
-        backgroundColor: theme.surfaceCard.withValues(alpha: 0.85),
-        borderColor: isPrimary
-            ? theme.accentPrimary.withValues(alpha: 0.40)
-            : theme.borderSubtle.withValues(alpha: 0.60),
-        borderWidth: 1.3,
-        padding: EdgeInsets.symmetric(
-          horizontal: isLandscape ? 8 : 10,
-          vertical: isLandscape ? 8 : 12,
-        ),
-        shadows: [
-          BoxShadow(
-            color: isPrimary
-                ? theme.accentPrimary.withValues(alpha: 0.12)
-                : Colors.black.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
           children: [
-            // Top glowing accent pill indicator
-            Container(
-              width: 28,
-              height: 3,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withValues(alpha: 0.5),
-                    blurRadius: 6,
-                    offset: const Offset(0, 1),
+            Positioned.fill(
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (event) {
+                  _powerGovernor.recordActivity();
+                  HapticFeedback.selectionClick();
+                  final packet = _detector.onPointerDown(event);
+                  _dispatchPacket(packet);
+                  _touchNotifier.value++;
+                  setState(() {});
+                },
+                onPointerMove: (event) {
+                  _powerGovernor.recordActivity();
+                  final packet = _detector.onPointerMove(event);
+                  _dispatchPacket(packet);
+                  _touchNotifier.value++; // 120Hz zero-lag canvas repaint
+                },
+                onPointerUp: (event) {
+                  _powerGovernor.recordActivity();
+                  final packet = _detector.onPointerUp(event);
+                  _dispatchPacket(packet);
+                  _touchNotifier.value++;
+                  setState(() {});
+                },
+                onPointerCancel: (event) {
+                  _powerGovernor.recordActivity();
+                  final packet = _detector.onPointerCancel(event);
+                  _dispatchPacket(packet);
+                  _touchNotifier.value++;
+                  setState(() {});
+                },
+                child: CustomPaint(
+                  painter: SamsungDotMatrixPainter(
+                    activePointers: _detector.activePointers,
+                    repaint: _touchNotifier,
+                    theme: theme,
+                    dotSpacing: density.spacing,
+                    baseDotRadius: density.baseRadius,
+                    maxDotRadius: density.maxRadius,
                   ),
-                ],
-              ),
-            ),
-            SizedBox(height: isLandscape ? 4 : 7),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: accent.withValues(alpha: 0.25),
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(icon, size: 14, color: accent),
-                ),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                  child: Stack(
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: theme.textPrimary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
+                      // Center Helper / Connect Banner
+                      if (_detector.pointerCount == 0)
+                        Center(
+                          child: _status == ConnectionStatus.connected
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.touch_app_rounded,
+                                      color: theme.textSecondary.withValues(alpha: 0.2),
+                                      size: 32,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.5,
+                                        color: theme.textSecondary.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: theme.accentPrimary.withValues(alpha: 0.1),
+                                        border: Border.all(
+                                          color: theme.accentPrimary.withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.wifi_tethering_rounded,
+                                        color: theme.accentPrimary,
+                                        size: 28,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'NOT CONNECTED TO PC',
+                                      style: TextStyle(
+                                        color: theme.textPrimary,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: theme.accentPrimary,
+                                        foregroundColor: Colors.black,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 10,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        elevation: 6,
+                                      ),
+                                      onPressed: widget.onSettingsTap,
+                                      icon: const Icon(Icons.bolt_rounded, size: 18),
+                                      label: const Text(
+                                        'Connect PC Now',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: theme.textSecondary.withValues(alpha: 0.75),
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ],
         ),

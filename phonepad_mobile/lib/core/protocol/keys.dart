@@ -33,7 +33,14 @@ enum MediaKey {
   nextSlide(5, 'Next Slide'),
   prevSlide(6, 'Prev Slide'),
   navBack(7, 'Back'),
-  navForward(8, 'Forward');
+  navForward(8, 'Forward'),
+  stop(9, 'Stop'),
+  prevTrack(10, 'Previous'),
+  nextTrack(11, 'Next'),
+  rewind(12, 'Rewind'),
+  fastForward(13, 'Fast Forward'),
+  channelUp(14, 'CH +'),
+  channelDown(15, 'CH -');
 
   final int code;
   final String label;
@@ -63,7 +70,24 @@ enum SpecialKey {
   end(11, 'End'),
   pageUp(12, 'PgUp'),
   pageDown(13, 'PgDn'),
-  space(14, 'Space');
+  space(14, 'Space'),
+  f1(15, 'F1'),
+  f2(16, 'F2'),
+  f3(17, 'F3'),
+  f4(18, 'F4'),
+  f5(19, 'F5'),
+  f6(20, 'F6'),
+  f7(21, 'F7'),
+  f8(22, 'F8'),
+  f9(23, 'F9'),
+  f10(24, 'F10'),
+  f11(25, 'F11'),
+  f12(26, 'F12'),
+  capsLock(27, 'Caps'),
+  win(28, 'Win'),
+  ctrl(29, 'Ctrl'),
+  alt(30, 'Alt'),
+  shift(31, 'Shift');
 
   final int code;
   final String label;

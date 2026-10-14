@@ -6,15 +6,14 @@ import 'core/network/transport.dart';
 import 'core/theme/colors.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/connection/presentation/connection_hub.dart';
+import 'features/modes/models/surface_mode.dart';
 import 'features/splash/presentation/splash_screen.dart';
 import 'features/touch/presentation/touch_surface.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Support both portrait and landscape orientations for adaptive tablet/desktop layout
+  // Lock permanently to landscape orientation for desktop trackpad & full keyboard experience
   SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
@@ -142,6 +141,7 @@ class _PhonePadAppState extends State<PhonePadApp> {
                 transport: _tcpTransport,
                 destination: _destination,
                 onSettingsTap: () => _showConnectionModal(innerContext),
+                initialMode: SurfaceMode.remote,
               );
             },
           ),

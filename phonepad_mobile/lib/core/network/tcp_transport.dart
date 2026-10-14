@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import '../protocol/handshake.dart';
 import '../protocol/opcode.dart';
 import '../protocol/packet.dart';
@@ -54,14 +55,24 @@ class TcpTransport implements ITransport {
     activePin = pin;
   }
 
+  final Uint8List _packetBuffer = Uint8List(PhonePadPacket.packetSize);
+
   @override
   Future<void> connect(String destination) async {
     _setStatus(ConnectionStatus.connecting);
 
     try {
-      final parts = destination.split(':');
-      final host = parts[0];
-      final port = parts.length > 1 ? int.parse(parts[1]) : 4242;
+      final trimmed = destination.trim();
+      final lastColon = trimmed.lastIndexOf(':');
+      String host;
+      int port = 4242;
+      if (lastColon != -1 && lastColon < trimmed.length - 1) {
+        host = trimmed.substring(0, lastColon).replaceAll('[', '').replaceAll(']', '').trim();
+        port = int.tryParse(trimmed.substring(lastColon + 1).trim()) ?? 4242;
+      } else {
+        host = trimmed.replaceAll('[', '').replaceAll(']', '').trim();
+      }
+      if (host.isEmpty) host = '127.0.0.1';
 
       _socket = await Socket.connect(host, port, timeout: const Duration(seconds: 3));
       _socket!.setOption(SocketOption.tcpNoDelay, true);
@@ -102,7 +113,8 @@ class TcpTransport implements ITransport {
   void sendPacket(PhonePadPacket packet) {
     if (_status == ConnectionStatus.connected && _socket != null) {
       try {
-        _socket!.add(packet.toBytes());
+        packet.writeTo(_packetBuffer);
+        _socket!.add(_packetBuffer);
         _lastPacketSent = DateTime.now();
       } catch (e) {
         _setStatus(ConnectionStatus.disconnected);

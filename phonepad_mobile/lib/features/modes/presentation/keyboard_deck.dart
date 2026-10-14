@@ -348,6 +348,66 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
     );
   }
 
+  Widget _buildFunctionKeyRow(PhonePadThemeData theme) {
+    const fKeys = [
+      (SpecialKey.f1, 'F1'),
+      (SpecialKey.f2, 'F2'),
+      (SpecialKey.f3, 'F3'),
+      (SpecialKey.f4, 'F4'),
+      (SpecialKey.f5, 'F5'),
+      (SpecialKey.f6, 'F6'),
+      (SpecialKey.f7, 'F7'),
+      (SpecialKey.f8, 'F8'),
+      (SpecialKey.f9, 'F9'),
+      (SpecialKey.f10, 'F10'),
+      (SpecialKey.f11, 'F11'),
+      (SpecialKey.f12, 'F12'),
+    ];
+
+    return Expanded(
+      child: Row(
+        children: [
+          Expanded(
+            flex: 10,
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: _buildSpecialKeyButton(
+                label: 'Esc',
+                fontSize: 10.5,
+                onTap: () => _sendSpecialKey(SpecialKey.escape),
+                theme: theme,
+              ),
+            ),
+          ),
+          ...fKeys.map((f) => Expanded(
+            flex: 7,
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: _buildSpecialKeyButton(
+                label: f.$2,
+                fontSize: 10.0,
+                onTap: () => _sendSpecialKey(f.$1),
+                theme: theme,
+              ),
+            ),
+          )),
+          Expanded(
+            flex: 10,
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: _buildSpecialKeyButton(
+                label: 'Del',
+                fontSize: 10.5,
+                onTap: () => _sendSpecialKey(SpecialKey.delete),
+                theme: theme,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQwertyRows(PhonePadThemeData theme) {
     const row1 = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'];
     const row2 = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
@@ -355,6 +415,9 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
 
     return Column(
       children: [
+        // Function Keys Row (Esc, F1 - F12, Del)
+        _buildFunctionKeyRow(theme),
+
         // Row 1
         Expanded(
           child: Row(
@@ -529,6 +592,9 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
 
     return Column(
       children: [
+        // Function Keys Row (Esc, F1 - F12, Del)
+        _buildFunctionKeyRow(theme),
+
         // Numbers row
         Expanded(
           child: Row(
@@ -727,21 +793,29 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
     IconData? icon,
     bool isActive = false,
     Color? activeColor,
+    double? fontSize,
+    bool isHero = false,
     required VoidCallback onTap,
     required PhonePadThemeData theme,
   }) {
-    final effectiveActiveColor = activeColor ?? theme.accentPrimary;
-    final bgColor = isActive
-        ? effectiveActiveColor.withValues(alpha: 0.2)
-        : theme.accentSecondary.withValues(alpha: 0.12);
+    final effectiveActiveColor = isHero ? theme.accentPrimary : (activeColor ?? theme.accentPrimary);
+    final bgColor = isHero
+        ? theme.accentPrimary.withValues(alpha: 0.28)
+        : (isActive
+            ? effectiveActiveColor.withValues(alpha: 0.2)
+            : theme.accentSecondary.withValues(alpha: 0.12));
 
-    final borderColor = isActive
-        ? effectiveActiveColor.withValues(alpha: 0.6)
-        : theme.borderSubtle;
+    final borderColor = isHero
+        ? theme.accentPrimary.withValues(alpha: 0.75)
+        : (isActive
+            ? effectiveActiveColor.withValues(alpha: 0.6)
+            : theme.borderSubtle);
 
-    final contentColor = isActive
-        ? effectiveActiveColor
-        : theme.textSecondary;
+    final contentColor = isHero
+        ? theme.accentPrimary
+        : (isActive
+            ? effectiveActiveColor
+            : theme.textSecondary);
 
     return SpringBounceTap(
       onTap: onTap,
@@ -759,7 +833,7 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
               : Text(
                   label ?? '',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: fontSize ?? 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: contentColor,

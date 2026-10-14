@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 enum AppThemeId {
+  electricBlue,
   obsidianEmerald,
   cyberpunkViolet,
   nordicIce,
@@ -61,6 +62,23 @@ class PhonePadThemeData {
     required this.dotBaseColor,
     required this.isDark,
   });
+
+  static const PhonePadThemeData electricBlue = PhonePadThemeData(
+    id: AppThemeId.electricBlue,
+    name: 'Electric Blue',
+    subtitle: 'Deep obsidian void & glowing electric blue',
+    backgroundPrimary: Color(0xFF060B13),
+    backgroundSecondary: Color(0xFF0C1424),
+    surfaceCard: Color(0xFF101C33),
+    accentPrimary: Color(0xFF007AFF),
+    accentSecondary: Color(0xFF00E5FF),
+    accentTertiary: Color(0xFF6366F1),
+    textPrimary: Color(0xFFF1F5F9),
+    textSecondary: Color(0xFF94A3B8),
+    borderSubtle: Color(0x28007AFF),
+    dotBaseColor: Color(0x0E007AFF),
+    isDark: true,
+  );
 
   static const PhonePadThemeData obsidianEmerald = PhonePadThemeData(
     id: AppThemeId.obsidianEmerald,
@@ -148,6 +166,7 @@ class PhonePadThemeData {
   );
 
   static const List<PhonePadThemeData> allThemes = [
+    electricBlue,
     obsidianEmerald,
     cyberpunkViolet,
     nordicIce,
@@ -157,6 +176,8 @@ class PhonePadThemeData {
 
   static PhonePadThemeData fromId(AppThemeId id) {
     switch (id) {
+      case AppThemeId.electricBlue:
+        return electricBlue;
       case AppThemeId.obsidianEmerald:
         return obsidianEmerald;
       case AppThemeId.cyberpunkViolet:
@@ -175,7 +196,7 @@ class ThemeController extends ChangeNotifier {
   static final ThemeController instance = ThemeController._();
   ThemeController._();
 
-  PhonePadThemeData _currentTheme = PhonePadThemeData.obsidianEmerald;
+  PhonePadThemeData _currentTheme = PhonePadThemeData.electricBlue;
   DotMatrixDensity _dotDensity = DotMatrixDensity.dense;
   bool _twoFingerNavEnabled = true;
   bool _threeFingerSwitcherEnabled = true;

@@ -26,7 +26,7 @@ class NumpadSurface extends StatefulWidget {
 
 class _NumpadSurfaceState extends State<NumpadSurface> {
   String _lastPressedKey = 'READY';
-  bool _isKeyboardMode = false;
+  bool _isKeyboardMode = true; // Keyboard active by default
 
   void _onKeyPress(NumpadKey key) {
     widget.onActivity();
@@ -53,84 +53,13 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
 
         return Container(
           color: theme.backgroundPrimary,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: OrientationBuilder(
-            builder: (context, orientation) {
-              final isLandscape = orientation == Orientation.landscape;
-
-              if (isLandscape) {
-                return _buildLandscapeLayout(theme);
-              }
-              return _buildPortraitLayout(theme);
-            },
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: _buildLandscapeLayout(theme),
         );
       },
     );
   }
 
-  Widget _buildPortraitLayout(PhonePadThemeData theme) {
-    if (_isKeyboardMode) {
-      return Column(
-        children: [
-          _buildTelemetryHeader(theme),
-          const SizedBox(height: 8),
-          Expanded(
-            child: KeyboardDeck(
-              transport: widget.transport,
-              onActivity: widget.onActivity,
-              onKeyNameChanged: (name) => setState(() => _lastPressedKey = name),
-            ),
-          ),
-        ],
-      );
-    }
-
-    const gridKeys = [
-      [NumpadKey.num7, NumpadKey.num8, NumpadKey.num9, NumpadKey.divide],
-      [NumpadKey.num4, NumpadKey.num5, NumpadKey.num6, NumpadKey.multiply],
-      [NumpadKey.num1, NumpadKey.num2, NumpadKey.num3, NumpadKey.subtract],
-      [NumpadKey.num0, NumpadKey.decimal, NumpadKey.backspace, NumpadKey.add],
-    ];
-
-    return Column(
-      children: [
-        // Top telemetry status strip
-        _buildTelemetryHeader(theme),
-        const SizedBox(height: 8),
-
-        // 4x4 Key Grid
-        Expanded(
-          child: Column(
-            children: gridKeys.map((row) {
-              return Expanded(
-                child: Row(
-                  children: row.map((key) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: _buildNumpadButton(key, theme),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-
-        // Glowing Hero Enter Key
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
-          child: SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: _buildEnterButton(theme),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildLandscapeLayout(PhonePadThemeData theme) {
     if (_isKeyboardMode) {

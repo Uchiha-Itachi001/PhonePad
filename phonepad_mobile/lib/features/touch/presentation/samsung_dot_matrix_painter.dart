@@ -91,15 +91,9 @@ class SamsungDotMatrixPainter extends CustomPainter {
       }
     }
 
-    // 2. Render tactile finger contact indicators directly under touch coordinates
+    // 2. Render tactile finger contact indicators directly under touch coordinates (clean, crisp, no blur glow)
     for (final point in activePointers.values) {
       final pos = point.current;
-
-      // Outer soft aura glow
-      final auraPaint = Paint()
-        ..color = theme.accentPrimary.withValues(alpha: 0.22)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
-      canvas.drawCircle(pos, 34.0, auraPaint);
 
       // Samsung One UI Sleek Concentric Ring
       final ringPaint = Paint()

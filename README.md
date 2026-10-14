@@ -2,7 +2,7 @@
 
 > **Turn your smartphone into a zero-latency, high-precision tactile trackpad, numeric keypad, and presentation remote for Windows.**
 
-![PhonePad Banner](image.png)
+![PhonePad Banner](assets/image.png)
 
 PhonePad bridges mobile multi-touch digitizers and desktop operating systems over local Wi-Fi and Bluetooth Classic RFCOMM, delivering native laptop touchpad precision, Samsung One UI inspired reactive physics, and instant tactile feedback.
 
