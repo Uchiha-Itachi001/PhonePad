@@ -377,6 +377,11 @@ impl InputInjector for WindowsInjector {
             }
             KEY_TYPE_SHORTCUT => {
                 let shortcut = ShortcutKey::from(code);
+                if shortcut == ShortcutKey::ShiftEnter {
+                    log::debug!("Injecting Shift + Enter (Next Line)");
+                    Self::trigger_combo(&[VK_SHIFT, VK_RETURN]);
+                    return;
+                }
                 let target_key = match shortcut {
                     ShortcutKey::SelectAll => b'A' as u16,
                     ShortcutKey::Copy => b'C' as u16,
@@ -385,7 +390,7 @@ impl InputInjector for WindowsInjector {
                     ShortcutKey::Undo => b'Z' as u16,
                     ShortcutKey::Redo => b'Y' as u16,
                     ShortcutKey::Save => b'S' as u16,
-                    ShortcutKey::Unknown => return,
+                    _ => return,
                 };
                 log::debug!("Injecting Shortcut {:?} (Ctrl + 0x{:02X})", shortcut, target_key);
                 Self::trigger_combo(&[VK_CONTROL, target_key]);

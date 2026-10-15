@@ -1097,10 +1097,10 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
               ),
               child: Row(
                 children: [
-                  _buildTimeoutOption('10s', 10, governor, currentTheme),
-                  _buildTimeoutOption('15s', 15, governor, currentTheme),
-                  _buildTimeoutOption('30s', 30, governor, currentTheme),
-                  _buildTimeoutOption('60s', 60, governor, currentTheme),
+                  _buildTimeoutOption('1 min', 60, governor, currentTheme),
+                  _buildTimeoutOption('2 min', 120, governor, currentTheme),
+                  _buildTimeoutOption('3 min', 180, governor, currentTheme),
+                  _buildTimeoutOption('5 min', 300, governor, currentTheme),
                   _buildTimeoutOption('Never', 0, governor, currentTheme),
                 ],
               ),

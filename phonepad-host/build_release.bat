@@ -6,7 +6,9 @@ echo ===================================================
 
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" 2>nul
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" 2>nul
-set "PATH=C:\Program Files\nodejs;%APPDATA%\npm;%USERPROFILE%\.cargo\bin;%PATH%"
+set "RUSTUP_HOME=%USERPROFILE%\.rustup"
+set "CARGO_HOME=%USERPROFILE%\.cargo"
+set "PATH=%USERPROFILE%\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin;C:\Program Files\nodejs;%APPDATA%\npm;%PATH%"
 
 echo [1/3] Building frontend distribution...
 call npm run build
@@ -16,7 +18,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [2/3] Compiling Tauri release binary...
-call "%USERPROFILE%\.cargo\bin\cargo.exe" build --release --manifest-path src-tauri\Cargo.toml
+call cargo build --release --manifest-path src-tauri\Cargo.toml
 if %errorlevel% neq 0 (
     echo Error: Cargo build failed.
     exit /b %errorlevel%

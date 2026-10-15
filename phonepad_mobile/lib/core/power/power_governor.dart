@@ -6,13 +6,13 @@ class PowerGovernor extends ChangeNotifier {
   static final PowerGovernor instance = PowerGovernor();
 
   bool _isEnabled = true;
-  int _timeoutSeconds = 15;
+  int _timeoutSeconds = 60;
   DateTime _lastActiveTime = DateTime.now();
   bool _isDimmed = false;
   Timer? _checkTimer;
 
   PowerGovernor({
-    Duration idleThreshold = const Duration(seconds: 15),
+    Duration idleThreshold = const Duration(minutes: 1),
   }) : _timeoutSeconds = idleThreshold.inSeconds;
 
   bool get isEnabled => _isEnabled;

@@ -12,8 +12,10 @@ import 'features/touch/presentation/touch_surface.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Lock permanently to landscape orientation for desktop trackpad & full keyboard experience
+  // Support portrait launch and sensor orientations without forced landscape lock
   SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
@@ -141,7 +143,7 @@ class _PhonePadAppState extends State<PhonePadApp> {
                 transport: _tcpTransport,
                 destination: _destination,
                 onSettingsTap: () => _showConnectionModal(innerContext),
-                initialMode: SurfaceMode.remote,
+                initialMode: SurfaceMode.trackpad,
               );
             },
           ),

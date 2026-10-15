@@ -103,7 +103,8 @@ enum ShortcutKey {
   cut(4, 'Cut', 'Ctrl+X'),
   undo(5, 'Undo', 'Ctrl+Z'),
   redo(6, 'Redo', 'Ctrl+Y'),
-  save(7, 'Save', 'Ctrl+S');
+  save(7, 'Save', 'Ctrl+S'),
+  shiftEnter(8, 'Next Line', 'Shift+Enter');
 
   final int code;
   final String label;

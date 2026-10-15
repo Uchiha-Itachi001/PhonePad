@@ -18,8 +18,7 @@ import 'package:phonepad_mobile/core/theme/spring_bounce_tap.dart';
 import 'package:phonepad_mobile/core/theme/liquid_glass_container.dart';
 import 'package:phonepad_mobile/features/touch/presentation/liquid_speed_dial.dart';
 import 'package:phonepad_mobile/features/splash/presentation/splash_screen.dart';
-import 'package:phonepad_mobile/features/splash/presentation/border_glow_badge.dart';
-import 'package:phonepad_mobile/features/splash/presentation/wave_photon_progress_bar.dart';
+import 'package:phonepad_mobile/features/modes/presentation/keyboard_deck.dart';
 
 class MockTransport implements ITransport {
   final _controller = StreamController<ConnectionStatus>.broadcast();
@@ -108,11 +107,12 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    // Verify touch packet was dispatched to transport
+    // Verify touch packet was dispatched to transport (8x high-res sub-pixel streaming)
     expect(mockTransport.sentPackets.isNotEmpty, isTrue);
     expect(mockTransport.sentPackets.first.opcode, equals(Opcode.move));
-    expect(mockTransport.sentPackets.first.dx, equals(15));
-    expect(mockTransport.sentPackets.first.dy, equals(20));
+    expect(mockTransport.sentPackets.first.dx, equals(120));
+    expect(mockTransport.sentPackets.first.dy, equals(160));
+    expect(mockTransport.sentPackets.first.isHighRes, isTrue);
   });
 
   testWidgets('TouchSurface detects quick tap as Left Click with haptic flag', (WidgetTester tester) async {
@@ -183,7 +183,7 @@ void main() {
     ));
 
     // Switch to 123 NUMPAD mode (since Keyboard is now default)
-    await tester.tap(find.text('123 NUMPAD'));
+    await tester.tap(find.byKey(const Key('deck_switch_numpad_btn')));
     await tester.pumpAndSettle();
 
     // Tap number 7 button
@@ -217,7 +217,7 @@ void main() {
     ));
 
     // Switch to KEYBOARD mode
-    await tester.tap(find.text('KEYBOARD'));
+    await tester.tap(find.byKey(const Key('deck_switch_keyboard_btn')));
     await tester.pumpAndSettle();
 
     // Verify keyboard keys are now present
@@ -260,7 +260,7 @@ void main() {
     expect(mockTransport.sentPackets.last.dy, equals(KeyboardKeyType.shortcut));
 
     // Switch back to NUMPAD mode
-    await tester.tap(find.text('123 NUMPAD'));
+    await tester.tap(find.byKey(const Key('deck_switch_numpad_btn')));
     await tester.pumpAndSettle();
 
     expect(find.text('7'), findsOneWidget);
@@ -557,6 +557,35 @@ void main() {
     expect(p1.isHighRes, isTrue);
   });
 
+  test('TouchDetector rotateCoordinates rotates movement deltas 90 degrees', () {
+    final detector = TouchDetector();
+    detector.rotateCoordinates = true;
+
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 100.0)));
+
+    // Raw delta: dx = 0, dy = 10 (user swiped right on sideways-held phone)
+    // Transformed delta: dx = 10, dy = 0 (cursor moves right on PC!)
+    final moveRight = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.0, 110.0),
+      delta: Offset(0.0, 10.0),
+    ));
+    expect(moveRight, isNotNull);
+    expect(moveRight!.dx, equals(10));
+    expect(moveRight.dy, equals(0));
+
+    // Raw delta: dx = 10, dy = 0 (user swiped up on sideways-held phone)
+    // Transformed delta: dx = 0, dy = -10 (cursor moves up on PC!)
+    final moveUp = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(110.0, 110.0),
+      delta: Offset(10.0, 0.0),
+    ));
+    expect(moveUp, isNotNull);
+    expect(moveUp!.dx, equals(0));
+    expect(moveUp.dy, equals(-10));
+  });
+
   testWidgets('SpringBounceTap applies tactile spring animation on tap and executes callback', (WidgetTester tester) async {
     var tapped = false;
 
@@ -660,7 +689,7 @@ void main() {
     expect(find.byType(CustomPaint), findsWidgets);
   });
 
-  testWidgets('SplashScreen renders circling particles, border glow badge, and progress bar', (WidgetTester tester) async {
+  testWidgets('SplashScreen renders 3D thinking orb and simple progress status', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: SplashScreen(
         onFinish: () {},
@@ -674,20 +703,17 @@ void main() {
     expect(find.text('Pad'), findsOneWidget);
     expect(find.text('NATIVE REAL-TIME WI-FI TRACKPAD'), findsOneWidget);
 
-    // Verify BorderGlowBadge is present
-    expect(find.byType(BorderGlowBadge), findsOneWidget);
-
-    // Verify WavePhotonProgressBar is present
-    expect(find.byType(WavePhotonProgressBar), findsOneWidget);
+    // Verify 3D Thinking Orb is present
+    expect(find.byKey(const Key('thinking_orb_custom_paint')), findsOneWidget);
 
     // Verify initial step text
     expect(find.text('Initializing touch digitizer...'), findsOneWidget);
 
-    // Verify Skip button is present
-    expect(find.text('Skip'), findsOneWidget);
+    // Verify Skip button is removed
+    expect(find.text('Skip'), findsNothing);
   });
 
-  testWidgets('SplashScreen advances boot progress and triggers onFinish when skipped or completed', (WidgetTester tester) async {
+  testWidgets('SplashScreen advances boot progress and triggers onFinish when completed', (WidgetTester tester) async {
     bool finished = false;
 
     await tester.pumpWidget(MaterialApp(
@@ -703,13 +729,194 @@ void main() {
     // Initially not finished
     expect(finished, isFalse);
 
-    // Tap Skip button
-    await tester.tap(find.text('Skip'));
-    await tester.pump();
+    // Advance boot progress to completion
+    await tester.pump(const Duration(milliseconds: 1050));
     await tester.pump(const Duration(milliseconds: 450));
 
     // Verify onFinish was invoked
     expect(finished, isTrue);
+  });
+
+  testWidgets('RemoteSurface adapts layout based on orientation without manual toggle button', (WidgetTester tester) async {
+    final mockTransport = MockTransport();
+
+    // Set portrait dimensions
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: RemoteSurface(
+          transport: mockTransport,
+          onActivity: () {},
+        ),
+      ),
+    ));
+
+    // No manual vertical mode toggle button exists
+    expect(find.text('VERTICAL MODE'), findsNothing);
+    expect(find.text('HORIZONTAL MODE'), findsNothing);
+
+    // Verify slide buttons and click buttons are present in portrait mode
+    expect(find.byKey(const Key('next_slide_btn')), findsOneWidget);
+    expect(find.text('PREV'), findsOneWidget);
+    expect(find.text('LEFT CLICK'), findsOneWidget);
+    expect(find.text('RIGHT CLICK'), findsOneWidget);
+
+    // Switch to landscape orientation
+    tester.view.physicalSize = const Size(800, 400);
+    await tester.pumpAndSettle();
+
+    // Renders successfully without manual toggle button
+    expect(find.text('VERTICAL MODE'), findsNothing);
+    expect(find.text('REMOTE ACTIVE'), findsOneWidget);
+  });
+
+  testWidgets('TouchSurface defaults to Trackpad mode in portrait and toggles horizontal mode', (WidgetTester tester) async {
+    final mockTransport = MockTransport();
+
+    await tester.pumpWidget(MaterialApp(
+      home: TouchSurface(
+        transport: mockTransport,
+        destination: '127.0.0.1:4242',
+        onSettingsTap: () {},
+      ),
+    ));
+
+    // Default mode is Trackpad in portrait: top header is present
+    expect(find.textContaining('PRECISION TRACKPAD SURFACE'), findsOneWidget);
+    expect(find.byKey(const Key('orientation_toggle_btn')), findsOneWidget);
+
+    // Tap orientation toggle in top header to switch to horizontal mode
+    await tester.tap(find.byKey(const Key('orientation_toggle_btn')));
+    await tester.pumpAndSettle();
+
+    // In horizontal mode, header stays on TOP and trackpad text adapts
+    expect(find.byKey(const Key('orientation_toggle_btn')), findsOneWidget);
+    expect(find.textContaining('HORIZONTAL TRACKPAD MODE'), findsOneWidget);
+
+    // Toggle back to vertical mode from top header
+    await tester.tap(find.byKey(const Key('orientation_toggle_btn')));
+    await tester.pumpAndSettle();
+
+    // Top header is back in vertical mode
+    expect(find.byKey(const Key('orientation_toggle_btn')), findsOneWidget);
+    expect(find.textContaining('PRECISION TRACKPAD SURFACE'), findsOneWidget);
+
+    // Switch to Keyboard mode (tap keyboard icon in top header)
+    await tester.tap(find.byIcon(Icons.keyboard_rounded));
+    await tester.pumpAndSettle();
+
+    // In Keyboard mode, full screen horizontal deck with SPACE key is active
+    expect(find.text('SPACE'), findsOneWidget);
+    expect(find.byIcon(Icons.touch_app_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.settings_remote_rounded), findsOneWidget);
+
+    // Tap Remote icon from the keyboard header to switch to Remote mode
+    await tester.tap(find.byIcon(Icons.settings_remote_rounded));
+    await tester.pumpAndSettle();
+
+    // In Remote mode, renders remote deck and telemetry
+    expect(find.text('REMOTE ACTIVE'), findsOneWidget);
+    expect(find.text('VERTICAL MODE'), findsNothing);
+  });
+
+  testWidgets('SpringBounceTap auto-repeats callback on press-and-hold', (WidgetTester tester) async {
+    int triggers = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SpringBounceTap(
+            repeatInitialDelay: const Duration(milliseconds: 100),
+            repeatInterval: const Duration(milliseconds: 50),
+            onHoldRepeat: () => triggers++,
+            child: const Text('Hold Me'),
+          ),
+        ),
+      ),
+    ));
+
+    // Tap and hold
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Hold Me')));
+    await tester.pump();
+    expect(triggers, equals(1)); // Initial trigger immediately
+
+    // Advance 120ms (past 100ms initial delay)
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(triggers, greaterThanOrEqualTo(1));
+
+    // Advance 150ms (intervals of 50ms)
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(triggers, greaterThanOrEqualTo(3));
+
+    // Release
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('KeyboardDeck Shift + Enter dispatches ShortcutKey.shiftEnter (Next Line)', (WidgetTester tester) async {
+    final mockTransport = MockTransport();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: KeyboardDeck(
+          transport: mockTransport,
+          onActivity: () {},
+          onKeyNameChanged: (_) {},
+        ),
+      ),
+    ));
+
+    // Tap Shift key (arrow upward icon in bottom row)
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded).last);
+    await tester.pumpAndSettle();
+
+    // Verify Enter key now displays 'NEXT'
+    expect(find.text('NEXT'), findsOneWidget);
+
+    // Tap the Enter key
+    await tester.tap(find.byIcon(Icons.subdirectory_arrow_right_rounded));
+    await tester.pump();
+
+    // Verify packet sent is ShortcutKey.shiftEnter
+    expect(mockTransport.sentPackets.isNotEmpty, isTrue);
+    final lastPacket = mockTransport.sentPackets.last;
+    expect(lastPacket.opcode, equals(Opcode.keyboard));
+    expect(lastPacket.dx, equals(ShortcutKey.shiftEnter.code));
+    expect(lastPacket.dy, equals(KeyboardKeyType.shortcut));
+  });
+
+  testWidgets('RemoteSurface Mute button toggles active visual state and sends MediaKey.mute', (WidgetTester tester) async {
+    final mockTransport = MockTransport();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: RemoteSurface(
+          transport: mockTransport,
+          onActivity: () {},
+        ),
+      ),
+    ));
+
+    // Initial state: not muted
+    expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTE')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTED')), findsNothing);
+
+    // Tap mute button
+    await tester.tap(find.byKey(const Key('mute_btn')));
+    await tester.pumpAndSettle();
+
+    // Verify active visual state changes to MUTED and packet sent
+    expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTED')), findsOneWidget);
+    expect(mockTransport.sentPackets.any((p) => p.opcode == Opcode.media && p.dx == MediaKey.mute.code), isTrue);
+
+    // Tap Vol + button to auto-unmute
+    await tester.tap(find.byKey(const Key('vol_up_btn')));
+    await tester.pumpAndSettle();
+
+    // State returns to unmuted
+    expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTE')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTED')), findsNothing);
   });
 }
 

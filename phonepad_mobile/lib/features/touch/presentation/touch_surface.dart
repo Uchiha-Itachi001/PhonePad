@@ -28,7 +28,7 @@ class TouchSurface extends StatefulWidget {
     required this.destination,
     required this.onSettingsTap,
     this.powerGovernor,
-    this.initialMode = SurfaceMode.remote,
+    this.initialMode = SurfaceMode.trackpad,
   });
 
   @override
@@ -41,6 +41,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
   late final PowerGovernor _powerGovernor;
   late final bool _ownsGovernor;
   late SurfaceMode _currentMode;
+  bool _isHorizontalOrientation = false;
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
   Timer? _heartbeatTimer;
@@ -52,7 +53,9 @@ class _TouchSurfaceState extends State<TouchSurface> {
   void initState() {
     super.initState();
     _currentMode = widget.initialMode;
+    _detector.highResMode = true; // 8x sub-pixel streaming for buttery smooth cursor tracking
     _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
+    _detector.rotateCoordinates = _isHorizontalOrientation;
     _status = widget.transport.status;
     _ownsGovernor = false;
     _powerGovernor = widget.powerGovernor ?? PowerGovernor.instance;
@@ -124,29 +127,16 @@ class _TouchSurfaceState extends State<TouchSurface> {
         _detector.twoFingerNavEnabled = ThemeController.instance.twoFingerNavEnabled;
         _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
 
+        final isKeyboardScreen = _currentMode == SurfaceMode.keyboard;
+
         return Scaffold(
-          backgroundColor: theme.backgroundPrimary,
+          backgroundColor: theme.isDark ? Colors.black : theme.backgroundPrimary,
           body: SafeArea(
             child: Stack(
               children: [
                 Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    children: [
-                      // Sleek Left Dock: minimal horizontal space, icons only
-                      _buildLeftRail(theme),
-                      const SizedBox(width: 8),
-
-                      // Main Interactive Surface Area (Full Widescreen Canvas)
-                      Expanded(
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 250),
-                          opacity: _powerGovernor.isDimmed ? 0.05 : 1.0,
-                          child: _buildSurfaceContent(theme),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _buildBody(theme, isKeyboardScreen),
                 ),
 
                 // AMOLED Power Saver Tap-to-Wake Overlay
@@ -200,14 +190,38 @@ class _TouchSurfaceState extends State<TouchSurface> {
     );
   }
 
-  /// Sleek, minimal vertical icon-only navigation and status dock.
-  Widget _buildLeftRail(PhonePadThemeData theme) {
+  /// Adaptive layout: Header is always on TOP for both Vertical and Horizontal modes.
+  /// When horizontal mode is active, icons rotate 90 degrees and touch coordinates rotate 90 degrees.
+  Widget _buildBody(PhonePadThemeData theme, bool isKeyboardScreen) {
+    if (isKeyboardScreen) {
+      // Full screen for Keyboard mode without top header
+      return _buildSurfaceContent(theme);
+    }
+
+    // Both Vertical and Horizontal modes keep header on TOP
+    return Column(
+      children: [
+        _buildTopHeader(theme),
+        const SizedBox(height: 8),
+        Expanded(
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 250),
+            opacity: _powerGovernor.isDimmed ? 0.05 : 1.0,
+            child: _buildSurfaceContent(theme),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Sleek header on TOP for both Vertical and Horizontal modes
+  Widget _buildTopHeader(PhonePadThemeData theme) {
     Color statusColor;
     IconData statusIcon;
 
     switch (_status) {
       case ConnectionStatus.connected:
-        statusColor = theme.accentPrimary;
+        statusColor = PhonePadColors.successGreen;
         statusIcon = Icons.wifi_rounded;
         break;
       case ConnectionStatus.connecting:
@@ -221,79 +235,73 @@ class _TouchSurfaceState extends State<TouchSurface> {
         break;
     }
 
+    final turns = _isHorizontalOrientation ? 1 : 0;
+
     return LiquidGlassContainer(
-      width: 52,
-      blur: 16.0,
+      height: 52,
+      blur: 24.0,
       borderRadius: BorderRadius.circular(18),
-      backgroundColor: theme.backgroundSecondary.withValues(alpha: 0.90),
+      backgroundColor: theme.isDark
+          ? const Color(0xFF07090E).withValues(alpha: 0.95)
+          : theme.backgroundSecondary.withValues(alpha: 0.90),
       borderGradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Colors.white.withValues(alpha: theme.isDark ? 0.20 : 0.5),
-          theme.accentPrimary.withValues(alpha: 0.12),
-          Colors.white.withValues(alpha: 0.04),
+          theme.accentPrimary.withValues(alpha: 0.70),
+          theme.accentSecondary.withValues(alpha: 0.45),
+          theme.accentPrimary.withValues(alpha: 0.35),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Column(
+      borderWidth: 1.3,
+      shadows: [
+        BoxShadow(
+          color: theme.accentPrimary.withValues(alpha: 0.18),
+          blurRadius: 12,
+          offset: const Offset(0, 2),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.6),
+          blurRadius: 16,
+          offset: const Offset(0, 4),
+        ),
+      ],
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Row(
         children: [
-          // Connection Status Icon (Icon only, no text)
+          // Connection Status Pill
           SpringBounceTap(
             onTap: widget.onSettingsTap,
             child: Tooltip(
               message: _status == ConnectionStatus.connected ? 'Connected' : 'Connection Hub',
               child: Container(
-                width: 40,
-                height: 40,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: statusColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                  color: statusColor.withValues(alpha: 0.12),
                   border: Border.all(
-                    color: statusColor.withValues(alpha: 0.4),
-                    width: 1.2,
+                    color: statusColor.withValues(alpha: 0.35),
+                    width: 1.0,
                   ),
                 ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(statusIcon, color: statusColor, size: 20),
-                    Positioned(
-                      right: 4,
-                      bottom: 4,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: statusColor.withValues(alpha: 0.7),
-                              blurRadius: 4,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: turns,
+                    child: Icon(statusIcon, color: statusColor, size: 19),
+                  ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Container(
-            width: 24,
-            height: 1,
-            color: theme.borderSubtle,
-          ),
-          const SizedBox(height: 10),
 
-          // Mode Selector Icons
+          const Spacer(),
+
+          // Mode Selector Pills
           ...SurfaceMode.values.map((mode) {
             final isSelected = mode == _currentMode;
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
               child: SpringBounceTap(
                 pressedScale: 0.90,
                 bounceOvershoot: 1.06,
@@ -311,16 +319,16 @@ class _TouchSurfaceState extends State<TouchSurface> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 240),
                     curve: Curves.easeOutCubic,
-                    width: 42,
-                    height: 42,
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
                       gradient: isSelected
                           ? LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
                               colors: [
-                                theme.accentPrimary.withValues(alpha: 0.35),
-                                theme.accentSecondary.withValues(alpha: 0.20),
+                                theme.accentPrimary.withValues(alpha: 0.28),
+                                theme.accentPrimary.withValues(alpha: 0.14),
                               ],
                             )
                           : null,
@@ -328,26 +336,29 @@ class _TouchSurfaceState extends State<TouchSurface> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
-                            ? theme.accentPrimary.withValues(alpha: 0.7)
+                            ? theme.accentPrimary.withValues(alpha: 0.55)
                             : Colors.transparent,
-                        width: 1.2,
+                        width: 1.0,
                       ),
                       boxShadow: [
                         if (isSelected)
                           BoxShadow(
-                            color: theme.accentPrimary.withValues(alpha: 0.25),
-                            blurRadius: 8,
+                            color: theme.accentPrimary.withValues(alpha: 0.20),
+                            blurRadius: 10,
                             offset: const Offset(0, 2),
                           ),
                       ],
                     ),
                     child: Center(
-                      child: Icon(
-                        mode.icon,
-                        size: 20,
-                        color: isSelected
-                            ? theme.accentPrimary
-                            : theme.textSecondary.withValues(alpha: 0.75),
+                      child: RotatedBox(
+                        quarterTurns: turns,
+                        child: Icon(
+                          mode.icon,
+                          size: 20,
+                          color: isSelected
+                              ? theme.accentPrimary
+                              : theme.textSecondary.withValues(alpha: 0.75),
+                        ),
                       ),
                     ),
                   ),
@@ -358,23 +369,80 @@ class _TouchSurfaceState extends State<TouchSurface> {
 
           const Spacer(),
 
+          // Orientation Functionality Toggle (Hidden in Remote mode as it uses sensor orientation)
+          if (_currentMode != SurfaceMode.remote) ...[
+            SpringBounceTap(
+              key: const Key('orientation_toggle_btn'),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _isHorizontalOrientation = !_isHorizontalOrientation;
+                  _detector.rotateCoordinates = _isHorizontalOrientation;
+                });
+                _powerGovernor.recordActivity();
+              },
+              child: Tooltip(
+                message: _isHorizontalOrientation ? 'Switch to Vertical Mode' : 'Switch to Horizontal Mode',
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: _isHorizontalOrientation
+                        ? theme.accentPrimary.withValues(alpha: 0.18)
+                        : (theme.isDark ? const Color(0xFF10121A) : theme.surfaceCard).withValues(alpha: 0.7),
+                    border: Border.all(
+                      color: _isHorizontalOrientation
+                          ? theme.accentPrimary.withValues(alpha: 0.55)
+                          : Colors.white.withValues(alpha: 0.07),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Center(
+                    child: RotatedBox(
+                      quarterTurns: turns,
+                      child: Icon(
+                        _isHorizontalOrientation
+                            ? Icons.stay_current_landscape_rounded
+                            : Icons.stay_current_portrait_rounded,
+                        size: 20,
+                        color: _isHorizontalOrientation
+                            ? theme.accentPrimary
+                            : theme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+
           // Settings Cog Icon
           SpringBounceTap(
             onTap: widget.onSettingsTap,
             child: Tooltip(
               message: 'Settings',
               child: Container(
-                width: 40,
-                height: 40,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: theme.surfaceCard.withValues(alpha: 0.6),
-                  border: Border.all(color: theme.borderSubtle),
+                  color: (theme.isDark ? const Color(0xFF10121A) : theme.surfaceCard).withValues(alpha: 0.7),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    width: 1.0,
+                  ),
                 ),
-                child: Icon(
-                  Icons.tune_rounded,
-                  size: 18,
-                  color: theme.textSecondary,
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: turns,
+                    child: Icon(
+                      Icons.tune_rounded,
+                      size: 18,
+                      color: theme.textSecondary,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -384,14 +452,28 @@ class _TouchSurfaceState extends State<TouchSurface> {
     );
   }
 
+
   Widget _buildSurfaceContent(PhonePadThemeData theme) {
     switch (_currentMode) {
       case SurfaceMode.trackpad:
         return _buildTrackpadDigitizer(theme);
       case SurfaceMode.keyboard:
-        return NumpadSurface(
-          transport: widget.transport,
-          onActivity: _powerGovernor.recordActivity,
+        // Always in horizontal (widescreen) mode across full long screen dimension
+        return RotatedBox(
+          quarterTurns: 1,
+          child: NumpadSurface(
+            transport: widget.transport,
+            onActivity: _powerGovernor.recordActivity,
+            currentMode: _currentMode,
+            onModeChanged: (mode) {
+              setState(() {
+                _currentMode = mode;
+              });
+              _powerGovernor.recordActivity();
+            },
+            onSettingsTap: widget.onSettingsTap,
+            connectionStatus: _status,
+          ),
         );
       case SurfaceMode.remote:
         return RemoteSurface(
@@ -407,12 +489,8 @@ class _TouchSurfaceState extends State<TouchSurface> {
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.backgroundSecondary.withValues(alpha: 0.65),
+        color: theme.isDark ? Colors.black : theme.backgroundSecondary,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: theme.borderSubtle,
-          width: 1.2,
-        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
@@ -457,35 +535,40 @@ class _TouchSurfaceState extends State<TouchSurface> {
                     dotSpacing: density.spacing,
                     baseDotRadius: density.baseRadius,
                     maxDotRadius: density.maxRadius,
+                    containerBorderRadius: 22.0,
                   ),
                   child: Stack(
                     children: [
                       // Center Helper / Connect Banner
                       if (_detector.pointerCount == 0)
                         Center(
-                          child: _status == ConnectionStatus.connected
-                              ? Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.touch_app_rounded,
-                                      color: theme.textSecondary.withValues(alpha: 0.2),
-                                      size: 32,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 1.5,
-                                        color: theme.textSecondary.withValues(alpha: 0.3),
+                          child: RotatedBox(
+                            quarterTurns: _isHorizontalOrientation ? 1 : 0,
+                            child: _status == ConnectionStatus.connected
+                                ? Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.touch_app_rounded,
+                                        color: theme.textSecondary.withValues(alpha: 0.2),
+                                        size: 32,
                                       ),
-                                    ),
-                                  ],
-                                )
-                              : Column(
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _isHorizontalOrientation
+                                            ? 'HORIZONTAL TRACKPAD MODE\nSWIPE LEFT/RIGHT • 2-FINGER SCROLL'
+                                            : 'PRECISION TRACKPAD SURFACE\n1-FINGER DRAG • 2-FINGER SCROLL & NAV • 3-FINGER SWITCH',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.5,
+                                          color: theme.textSecondary.withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Container(
@@ -536,6 +619,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
                                     ),
                                   ],
                                 ),
+                          ),
                         ),
                     ],
                   ),

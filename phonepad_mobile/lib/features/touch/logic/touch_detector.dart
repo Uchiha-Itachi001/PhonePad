@@ -33,6 +33,9 @@ class TouchDetector {
   bool _isPinching = false;
   bool pinchZoomEnabled = true;
 
+  // 90-degree coordinate rotation for simulated horizontal mode
+  bool rotateCoordinates = false;
+
   Map<int, TouchPoint> get activePointers => _activePointers;
   int get pointerCount => _activePointers.length;
   bool get isDragLocked => _isDragLocked;
@@ -100,7 +103,8 @@ class TouchDetector {
     if (point == null) return null;
 
     point.update(event.localPosition);
-    final delta = point.delta;
+    final rawDelta = point.delta;
+    final delta = rotateCoordinates ? Offset(rawDelta.dy, -rawDelta.dx) : rawDelta;
 
     final count = _activePointers.length;
     if (count > _maxPointersInSession) {

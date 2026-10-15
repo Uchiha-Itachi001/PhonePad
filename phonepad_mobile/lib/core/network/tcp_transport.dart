@@ -14,6 +14,11 @@ class TcpTransport implements ITransport {
   Timer? _keepAliveTimer;
   DateTime _lastPacketSent = DateTime.now();
 
+  String? _lastDestination;
+  bool _isManualDisconnect = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
+
   @override
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
 
@@ -26,7 +31,7 @@ class TcpTransport implements ITransport {
       _statusController.add(_status);
       if (newStatus == ConnectionStatus.connected) {
         _startKeepAlive();
-      } else {
+      } else if (newStatus == ConnectionStatus.disconnected) {
         _stopKeepAlive();
       }
     }
@@ -59,7 +64,19 @@ class TcpTransport implements ITransport {
 
   @override
   Future<void> connect(String destination) async {
-    _setStatus(ConnectionStatus.connecting);
+    _isManualDisconnect = false;
+    _lastDestination = destination;
+    _reconnectAttempts = 0;
+    _reconnectTimer?.cancel();
+    return _internalConnect(destination);
+  }
+
+  Future<void> _internalConnect(String destination) async {
+    if (_reconnectAttempts == 0) {
+      _setStatus(ConnectionStatus.connecting);
+    } else {
+      _setStatus(ConnectionStatus.reconnecting);
+    }
 
     try {
       final trimmed = destination.trim();
@@ -84,7 +101,9 @@ class TcpTransport implements ITransport {
         authPin: activePin,
       );
       _socket!.add(handshake.toBytes());
+      _socket!.flush().catchError((_) {});
 
+      _reconnectAttempts = 0;
       _setStatus(ConnectionStatus.connected);
 
       _socket!.listen(
@@ -92,20 +111,52 @@ class TcpTransport implements ITransport {
           // Handshake ack/heartbeat echo from host
         },
         onError: (error) {
-          _setStatus(ConnectionStatus.disconnected);
-          _socket?.destroy();
-          _socket = null;
+          _handleUnexpectedDrop();
         },
         onDone: () {
-          _setStatus(ConnectionStatus.disconnected);
-          _socket?.destroy();
-          _socket = null;
+          _handleUnexpectedDrop();
         },
         cancelOnError: true,
       );
     } catch (e) {
+      if (_reconnectAttempts > 0) {
+        _handleUnexpectedDrop();
+      } else {
+        _setStatus(ConnectionStatus.disconnected);
+        rethrow;
+      }
+    }
+  }
+
+  void _handleUnexpectedDrop() {
+    _stopKeepAlive();
+    try {
+      _socket?.destroy();
+    } catch (_) {}
+    _socket = null;
+
+    if (_isManualDisconnect || _lastDestination == null) {
       _setStatus(ConnectionStatus.disconnected);
-      rethrow;
+      return;
+    }
+
+    // Auto-reconnect with exponential backoff on accidental WiFi / network drop
+    if (_reconnectAttempts < 3) {
+      _reconnectAttempts++;
+      _setStatus(ConnectionStatus.reconnecting);
+      _reconnectTimer?.cancel();
+      _reconnectTimer = Timer(Duration(milliseconds: 600 * _reconnectAttempts), () async {
+        if (!_isManualDisconnect && _lastDestination != null) {
+          try {
+            await _internalConnect(_lastDestination!);
+          } catch (_) {
+            // Handled inside _internalConnect
+          }
+        }
+      });
+    } else {
+      _reconnectAttempts = 0;
+      _setStatus(ConnectionStatus.disconnected);
     }
   }
 
@@ -115,15 +166,20 @@ class TcpTransport implements ITransport {
       try {
         packet.writeTo(_packetBuffer);
         _socket!.add(_packetBuffer);
+        // Flush immediately to reduce transmission latency down to wire speed
+        _socket!.flush().catchError((_) {});
         _lastPacketSent = DateTime.now();
       } catch (e) {
-        _setStatus(ConnectionStatus.disconnected);
+        _handleUnexpectedDrop();
       }
     }
   }
 
   @override
   Future<void> disconnect() async {
+    _isManualDisconnect = true;
+    _reconnectTimer?.cancel();
+    _reconnectAttempts = 0;
     _stopKeepAlive();
     try {
       await _socket?.close();

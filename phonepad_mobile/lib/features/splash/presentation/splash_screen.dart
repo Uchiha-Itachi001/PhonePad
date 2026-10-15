@@ -1,16 +1,14 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../../../../core/theme/colors.dart';
-import '../../../../core/theme/spring_bounce_tap.dart';
-import 'border_glow_badge.dart';
-import 'circling_particle_ring_painter.dart';
-import 'wave_photon_progress_bar.dart';
+import 'thinking_orb_painter.dart';
 
-/// Full-screen cinematic Splash Screen adapted from Developer Bucket components:
-/// - Circling Particle Orbital Ring (`circling-particle-ring.html`)
-/// - Specular Conic Border Glow Squircle (`border-glow.html`)
-/// - Wave-Light Radial Photon Progress Bar (`wave-progress-bar.html`)
-/// - Dynamic Spring Physics & Glassmorphism (`user-preference-dna.json`)
+/// Clean, minimalist, and authentic Splash Screen with the 3D Thinking Orb
+/// adapted from Developer Bucket (`thinking-orbs.html` / Libraries.dev).
+///
+/// Features:
+/// - 3D Halftone Thinking Orb in Electric Blue (#38BDF8 / #0284C7)
+/// - Clean typography and streamlined status
+/// - Slender progress indicator
+/// - 0ms skip/dismiss option
 class SplashScreen extends StatefulWidget {
   final VoidCallback onFinish;
   final Duration bootDuration;
@@ -30,7 +28,6 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _orbitController;
-  late final AnimationController _pulseController;
   late final AnimationController _bootController;
   late final AnimationController _exitController;
 
@@ -50,25 +47,19 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // 1. Continuous orbital spin controller (counter-rotating particles)
+    // 1. Continuous orbital spin controller (Thinking Orb)
     _orbitController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
 
-    // 2. Ambient breathing pulse controller
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-
-    // 3. Boot progress controller
+    // 2. Boot progress controller
     _bootController = AnimationController(
       vsync: this,
       duration: widget.bootDuration,
     );
 
-    // 4. Exit transition controller (smooth scale-down & fade-out)
+    // 3. Exit transition controller
     _exitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -131,7 +122,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _orbitController.dispose();
-    _pulseController.dispose();
     _bootController.dispose();
     _exitController.dispose();
     super.dispose();
@@ -142,27 +132,42 @@ class _SplashScreenState extends State<SplashScreen>
     return AnimatedBuilder(
       animation: Listenable.merge([
         _orbitController,
-        _pulseController,
         _bootController,
         _exitController,
       ]),
       builder: (context, _) {
         final orbitValue = _orbitController.value;
-        final pulseValue = _pulseController.value;
         final bootProgress = _bootController.value;
 
         return Scaffold(
-          backgroundColor: PhonePadColors.backgroundPrimary,
+          backgroundColor: const Color(0xFF07090E),
           body: FadeTransition(
             opacity: _fadeAnimation,
             child: ScaleTransition(
               scale: _scaleAnimation,
               child: Stack(
                 children: [
-                  // 1. Ambient Background Gradient Spots
+                  // 1. Ambient Background Blue Glow
                   Positioned(
-                    top: -100,
-                    right: -100,
+                    top: -120,
+                    right: -120,
+                    child: Container(
+                      width: 360,
+                      height: 360,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            const Color(0xFF0284C7).withValues(alpha: 0.12),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: -100,
+                    left: -100,
                     child: Container(
                       width: 320,
                       height: 320,
@@ -170,24 +175,7 @@ class _SplashScreenState extends State<SplashScreen>
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            PhonePadColors.accentEmerald.withValues(alpha: 0.12),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -80,
-                    left: -80,
-                    child: Container(
-                      width: 280,
-                      height: 280,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            PhonePadColors.accentCyan.withValues(alpha: 0.10),
+                            const Color(0xFF38BDF8).withValues(alpha: 0.10),
                             Colors.transparent,
                           ],
                         ),
@@ -195,88 +183,36 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                   ),
 
-                  // 2. Top Skip Button (For immediate bypass)
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + 12,
-                    right: 20,
-                    child: SpringBounceTap(
-                      onTap: _handleFinish,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              bootProgress >= 1.0 ? 'Launch' : 'Skip',
-                              style: const TextStyle(
-                                color: PhonePadColors.textSecondary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              size: 11,
-                              color: PhonePadColors.textSecondary,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // 3. Center Hero Stage (Orbital Particles + BorderGlow Badge)
+                  // 2. Center Hero Stage (Developer Bucket 3D Thinking Orb)
                   Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // 3D Halftone Thinking Orb in Blue Palette
                         SizedBox(
-                          width: 260,
-                          height: 260,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Circling Particle Ring Canvas
-                              CustomPaint(
-                                size: const Size(260, 260),
-                                painter: CirclingParticleRingPainter(
-                                  animationValue: orbitValue,
-                                  pulseValue: pulseValue,
-                                ),
-                              ),
-
-                              // Central Conic Border Glow Squircle
-                              BorderGlowBadge(
-                                rotationAngle: orbitValue * 2 * math.pi,
-                                pulse: pulseValue,
-                                size: 108,
-                              ),
-                            ],
+                          width: 220,
+                          height: 220,
+                          child: CustomPaint(
+                            key: const Key('thinking_orb_custom_paint'),
+                            size: const Size(220, 220),
+                            painter: ThinkingOrbPainter(
+                              animationProgress: orbitValue,
+                              primaryColor: const Color(0xFF38BDF8),
+                              accentColor: const Color(0xFF60A5FA),
+                            ),
                           ),
                         ),
 
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 32),
 
-                        // Brand Title & Animated Status Chip
+                        // Clean Minimal Brand Title
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Text(
                               'Phone',
                               style: TextStyle(
-                                color: PhonePadColors.textPrimary,
+                                color: Colors.white,
                                 fontSize: 32,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.5,
@@ -285,14 +221,14 @@ class _SplashScreenState extends State<SplashScreen>
                             Text(
                               'Pad',
                               style: TextStyle(
-                                color: PhonePadColors.accentEmerald,
+                                color: const Color(0xFF38BDF8),
                                 fontSize: 32,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.5,
                                 shadows: [
                                   Shadow(
-                                    color: PhonePadColors.accentEmerald.withValues(alpha: 0.6),
-                                    blurRadius: 16,
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.65),
+                                    blurRadius: 18,
                                   ),
                                 ],
                               ),
@@ -302,7 +238,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                         const SizedBox(height: 6),
 
-                        // Subtitle with Live Ping Dot
+                        // Subtitle with Ping Dot
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -310,11 +246,11 @@ class _SplashScreenState extends State<SplashScreen>
                               width: 6,
                               height: 6,
                               decoration: BoxDecoration(
-                                color: PhonePadColors.accentCyan,
+                                color: const Color(0xFF38BDF8),
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: PhonePadColors.accentCyan,
+                                    color: const Color(0xFF38BDF8),
                                     blurRadius: 6,
                                     spreadRadius: 1,
                                   ),
@@ -325,7 +261,7 @@ class _SplashScreenState extends State<SplashScreen>
                             const Text(
                               'NATIVE REAL-TIME WI-FI TRACKPAD',
                               style: TextStyle(
-                                color: PhonePadColors.textSecondary,
+                                color: Color(0xFF94A3B8),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 1.2,
@@ -334,16 +270,53 @@ class _SplashScreenState extends State<SplashScreen>
                           ],
                         ),
 
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 40),
 
-                        // Wave Photon Progress Bar
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28),
-                          child: WavePhotonProgressBar(
-                            progress: bootProgress,
-                            sweepProgress: (orbitValue * 2) % 1.0,
-                            statusText: _currentStep,
-                            maxWidth: 340,
+                        // Simple, Sleek Progress Section
+                        SizedBox(
+                          width: 240,
+                          child: Column(
+                            children: [
+                              Text(
+                                _currentStep,
+                                style: const TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Minimal 3px Slender Progress Bar
+                              Container(
+                                width: 240,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: Container(
+                                  width: 240 * bootProgress.clamp(0.0, 1.0),
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF0284C7),
+                                        Color(0xFF38BDF8),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -359,7 +332,7 @@ class _SplashScreenState extends State<SplashScreen>
                       child: Text(
                         '120Hz Low Latency • Zero-Overhead Protocol',
                         style: TextStyle(
-                          color: PhonePadColors.textSecondary.withValues(alpha: 0.5),
+                          color: const Color(0xFF94A3B8).withValues(alpha: 0.4),
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           letterSpacing: 0.4,

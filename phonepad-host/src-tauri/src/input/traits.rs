@@ -187,6 +187,7 @@ pub enum ShortcutKey {
     Undo = 5,
     Redo = 6,
     Save = 7,
+    ShiftEnter = 8,
     Unknown = 255,
 }
 
@@ -200,6 +201,7 @@ impl From<u16> for ShortcutKey {
             5 => ShortcutKey::Undo,
             6 => ShortcutKey::Redo,
             7 => ShortcutKey::Save,
+            8 => ShortcutKey::ShiftEnter,
             _ => ShortcutKey::Unknown,
         }
     }

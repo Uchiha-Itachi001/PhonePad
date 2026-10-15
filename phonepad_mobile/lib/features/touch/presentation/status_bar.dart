@@ -33,7 +33,7 @@ class PhonePadStatusBar extends StatelessWidget {
 
     switch (status) {
       case ConnectionStatus.connected:
-        statusColor = theme.accentPrimary;
+        statusColor = PhonePadColors.successGreen;
         statusText = 'Connected';
         break;
       case ConnectionStatus.connecting:
@@ -63,13 +63,13 @@ class PhonePadStatusBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(isLandscape ? 14 : 20),
         border: Border.all(
           color: status == ConnectionStatus.connected
-              ? theme.accentPrimary.withValues(alpha: 0.35)
+              ? PhonePadColors.successGreen.withValues(alpha: 0.35)
               : theme.borderSubtle,
         ),
         boxShadow: [
           if (status == ConnectionStatus.connected)
             BoxShadow(
-              color: theme.accentPrimary.withValues(alpha: 0.15),
+              color: PhonePadColors.successGreen.withValues(alpha: 0.15),
               blurRadius: 16,
               spreadRadius: 2,
             ),

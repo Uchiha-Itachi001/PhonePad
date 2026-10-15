@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 /// PhonePad Color Palette adhering to User Preference DNA.
 abstract class PhonePadColors {
   /// Dark base background
-  static const Color backgroundPrimary = Color(0xFF060B13);
+  static const Color backgroundPrimary = Color(0xFF000000);
 
   /// Secondary dark card/surface
-  static const Color backgroundSecondary = Color(0xFF0C1424);
+  static const Color backgroundSecondary = Color(0xFF000000);
 
   /// Electric Blue main accent (Matches App Icon & Remote Deck Design)
   static const Color accentBlue = Color(0xFF007AFF);
@@ -30,6 +30,9 @@ abstract class PhonePadColors {
 
   /// Subdued text secondary
   static const Color textSecondary = Color(0xFF94A3B8);
+
+  /// Success / connected vibrant green
+  static const Color successGreen = Color(0xFF10B981);
 
   /// Danger / disconnected red
   static const Color errorRed = Color(0xFFEF4444);

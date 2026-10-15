@@ -13,7 +13,7 @@ pub struct FilterConfig {
 impl Default for FilterConfig {
     fn default() -> Self {
         Self {
-            deadzone_threshold: 0.4,
+            deadzone_threshold: 0.08,
             scroll_units_per_notch: 16.0,
             natural_scroll: true,
         }
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_deadzone_f32() {
         let filter = GestureFilter::default();
-        assert_eq!(filter.apply_deadzone_f32(0.1, 0.2), (0.0, 0.0));
+        assert_eq!(filter.apply_deadzone_f32(0.02, 0.03), (0.0, 0.0));
         assert_eq!(filter.apply_deadzone_f32(1.0, 0.0), (1.0, 0.0));
     }
 

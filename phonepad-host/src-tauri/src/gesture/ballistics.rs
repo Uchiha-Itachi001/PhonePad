@@ -100,13 +100,14 @@ impl BallisticsEngine {
         let target_x = self.smooth_dx * multiplier + self.rem_x;
         let target_y = self.smooth_dy * multiplier + self.rem_y;
 
-        // Truncate to integer pixels for OS injection
-        let out_x = target_x.trunc() as i32;
-        let out_y = target_y.trunc() as i32;
+        // Round to nearest integer pixel with remainder carry-forward
+        // This eliminates the 1.0-pixel deadband of truncation and keeps sub-pixel motion buttery smooth
+        let out_x = target_x.round() as i32;
+        let out_y = target_y.round() as i32;
 
         // Save remainder for subsequent frame
-        self.rem_x = target_x.fract();
-        self.rem_y = target_y.fract();
+        self.rem_x = target_x - (out_x as f32);
+        self.rem_y = target_y - (out_y as f32);
 
         // Clamp output to reasonable screen bounds to prevent hostile injection jumps
         let safe_x = out_x.clamp(-1500, 1500);
@@ -134,13 +135,13 @@ mod tests {
 
         let mut engine = BallisticsEngine::new(config);
 
-        // Frame 1: 1 * 0.5 = 0.5 -> trunc 0, rem 0.5
+        // Frame 1: 1 * 0.5 = 0.5 -> round is 1, rem -0.5
         let (x1, y1) = engine.process_delta(1, 0);
-        assert_eq!((x1, y1), (0, 0));
+        assert_eq!((x1, y1), (1, 0));
 
-        // Frame 2: 1 * 0.5 + 0.5 = 1.0 -> trunc 1, rem 0.0
+        // Frame 2: 1 * 0.5 + (-0.5) = 0.0 -> round is 0, rem 0.0
         let (x2, y2) = engine.process_delta(1, 0);
-        assert_eq!((x2, y2), (1, 0));
+        assert_eq!((x2, y2), (0, 0));
     }
 
     #[test]

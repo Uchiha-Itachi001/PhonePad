@@ -40,10 +40,16 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
   void initState() {
     super.initState();
     _imeController.addListener(_onImeTextChanged);
+    _imeFocusNode.addListener(_onImeFocusChanged);
+  }
+
+  void _onImeFocusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _imeFocusNode.removeListener(_onImeFocusChanged);
     _imeController.removeListener(_onImeTextChanged);
     _imeController.dispose();
     _imeFocusNode.dispose();
@@ -54,8 +60,8 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
     final text = _imeController.text;
     if (text.isNotEmpty) {
       widget.onActivity();
-      for (final char in text.characters) {
-        _sendChar(char);
+      for (final rune in text.runes) {
+        _sendChar(String.fromCharCode(rune));
       }
       _imeController.clear();
     }
@@ -186,13 +192,28 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
   }
 
   Widget _buildActionBar(PhonePadThemeData theme) {
+    final isImeActive = _imeFocusNode.hasFocus;
     return Container(
       height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
-        color: theme.surfaceCard.withValues(alpha: 0.5),
+        color: theme.isDark
+            ? const Color(0xFF080B12).withValues(alpha: 0.95)
+            : theme.surfaceCard.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.borderSubtle),
+        border: Border.all(
+          color: theme.isDark
+              ? theme.accentPrimary.withValues(alpha: 0.35)
+              : theme.borderSubtle,
+        ),
+        boxShadow: [
+          if (theme.isDark)
+            BoxShadow(
+              color: theme.accentPrimary.withValues(alpha: 0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 1),
+            ),
+        ],
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -239,23 +260,29 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
             theme: theme,
           ),
           _buildActionButton(
+            label: 'LINE',
+            subLabel: 'Shift+↵',
+            onTap: () => _sendShortcut(ShortcutKey.shiftEnter),
+            theme: theme,
+          ),
+          _buildActionButton(
             icon: Icons.arrow_back_rounded,
-            onTap: () => _sendSpecialKey(SpecialKey.arrowLeft),
+            onHoldRepeat: () => _sendSpecialKey(SpecialKey.arrowLeft),
             theme: theme,
           ),
           _buildActionButton(
             icon: Icons.arrow_upward_rounded,
-            onTap: () => _sendSpecialKey(SpecialKey.arrowUp),
+            onHoldRepeat: () => _sendSpecialKey(SpecialKey.arrowUp),
             theme: theme,
           ),
           _buildActionButton(
             icon: Icons.arrow_downward_rounded,
-            onTap: () => _sendSpecialKey(SpecialKey.arrowDown),
+            onHoldRepeat: () => _sendSpecialKey(SpecialKey.arrowDown),
             theme: theme,
           ),
           _buildActionButton(
             icon: Icons.arrow_forward_rounded,
-            onTap: () => _sendSpecialKey(SpecialKey.arrowRight),
+            onHoldRepeat: () => _sendSpecialKey(SpecialKey.arrowRight),
             theme: theme,
           ),
           // System keyboard summon button
@@ -265,21 +292,39 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
               borderRadius: BorderRadius.circular(8),
               onTap: () {
                 HapticFeedback.selectionClick();
-                _imeFocusNode.requestFocus();
-                widget.onKeyNameChanged('SYSTEM IME');
+                if (_imeFocusNode.hasFocus) {
+                  _imeFocusNode.unfocus();
+                  widget.onKeyNameChanged('IME CLOSED');
+                } else {
+                  _imeFocusNode.requestFocus();
+                  widget.onKeyNameChanged('SYSTEM IME');
+                }
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.accentPrimary.withValues(alpha: 0.25),
-                      theme.accentSecondary.withValues(alpha: 0.15),
-                    ],
-                  ),
+                  color: isImeActive
+                      ? theme.accentPrimary.withValues(alpha: 0.25)
+                      : (theme.isDark
+                          ? const Color(0xFF111520)
+                          : theme.surfaceCard.withValues(alpha: 0.8)),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: theme.accentPrimary.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: isImeActive
+                        ? theme.accentPrimary.withValues(alpha: 0.70)
+                        : (theme.isDark
+                            ? const Color(0xFF22293C)
+                            : theme.borderSubtle),
+                  ),
+                  boxShadow: [
+                    if (isImeActive)
+                      BoxShadow(
+                        color: theme.accentPrimary.withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        offset: const Offset(0, 1),
+                      ),
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -287,7 +332,7 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
                     Icon(
                       Icons.keyboard_alt_rounded,
                       size: 14,
-                      color: theme.accentPrimary,
+                      color: isImeActive ? theme.accentPrimary : theme.textSecondary,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -296,7 +341,7 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
-                        color: theme.accentPrimary,
+                        color: isImeActive ? theme.accentPrimary : theme.textSecondary,
                       ),
                     ),
                   ],
@@ -313,36 +358,55 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
     String? label,
     String? subLabel,
     IconData? icon,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    VoidCallback? onHoldRepeat,
     required PhonePadThemeData theme,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        splashColor: theme.accentPrimary.withValues(alpha: 0.2),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: theme.borderSubtle),
+    return SpringBounceTap(
+      onTap: onTap,
+      onHoldRepeat: onHoldRepeat,
+      pressedScale: 0.92,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: theme.isDark
+              ? const Color(0xFF111520)
+              : theme.surfaceCard.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: theme.isDark
+                ? const Color(0xFF22293C)
+                : theme.borderSubtle,
           ),
-          child: Center(
-            child: icon != null
-                ? Icon(icon, size: 14, color: theme.textSecondary)
-                : Text(
-                    label ?? '',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                      color: theme.textSecondary,
+        ),
+        child: Center(
+          child: icon != null
+              ? Icon(icon, size: 14, color: theme.textSecondary)
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label ?? '',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: theme.textSecondary,
+                      ),
                     ),
-                  ),
-          ),
+                    if (subLabel != null)
+                      Text(
+                        subLabel,
+                        style: TextStyle(
+                          fontSize: 7.0,
+                          fontWeight: FontWeight.w700,
+                          color: theme.accentPrimary,
+                        ),
+                      ),
+                  ],
+                ),
         ),
       ),
     );
@@ -495,14 +559,14 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
                   ),
                 );
               }),
-              // Backspace Key
+              // Backspace Key (with Press-and-Hold auto-repeat)
               Expanded(
                 flex: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
                   child: _buildSpecialKeyButton(
                     icon: Icons.backspace_outlined,
-                    onTap: () => _sendSpecialKey(SpecialKey.backspace),
+                    onHoldRepeat: () => _sendSpecialKey(SpecialKey.backspace),
                     theme: theme,
                   ),
                 ),
@@ -667,14 +731,14 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
                   ),
                 );
               }),
-              // Backspace
+              // Backspace (with Press-and-Hold auto-repeat)
               Expanded(
                 flex: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
                   child: _buildSpecialKeyButton(
                     icon: Icons.backspace_outlined,
-                    onTap: () => _sendSpecialKey(SpecialKey.backspace),
+                    onHoldRepeat: () => _sendSpecialKey(SpecialKey.backspace),
                     theme: theme,
                   ),
                 ),
@@ -763,14 +827,21 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
       bounceOvershoot: 1.07,
       child: Container(
         decoration: BoxDecoration(
-          color: theme.surfaceCard.withValues(alpha: 0.95),
+          color: theme.isDark
+              ? const Color(0xFF121520)
+              : theme.surfaceCard.withValues(alpha: 0.95),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: theme.borderSubtle, width: 1.0),
+          border: Border.all(
+            color: theme.isDark
+                ? const Color(0xFF22293C)
+                : theme.borderSubtle,
+            width: 1.0,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 3,
-              offset: const Offset(0, 1.5),
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -795,21 +866,26 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
     Color? activeColor,
     double? fontSize,
     bool isHero = false,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    VoidCallback? onHoldRepeat,
     required PhonePadThemeData theme,
   }) {
     final effectiveActiveColor = isHero ? theme.accentPrimary : (activeColor ?? theme.accentPrimary);
     final bgColor = isHero
         ? theme.accentPrimary.withValues(alpha: 0.28)
         : (isActive
-            ? effectiveActiveColor.withValues(alpha: 0.2)
-            : theme.accentSecondary.withValues(alpha: 0.12));
+            ? effectiveActiveColor.withValues(alpha: 0.25)
+            : (theme.isDark
+                ? const Color(0xFF0F121C)
+                : theme.accentSecondary.withValues(alpha: 0.12)));
 
     final borderColor = isHero
         ? theme.accentPrimary.withValues(alpha: 0.75)
         : (isActive
-            ? effectiveActiveColor.withValues(alpha: 0.6)
-            : theme.borderSubtle);
+            ? effectiveActiveColor.withValues(alpha: 0.75)
+            : (theme.isDark
+                ? const Color(0xFF202638)
+                : theme.borderSubtle));
 
     final contentColor = isHero
         ? theme.accentPrimary
@@ -819,6 +895,7 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
 
     return SpringBounceTap(
       onTap: onTap,
+      onHoldRepeat: onHoldRepeat,
       pressedScale: 0.90,
       bounceOvershoot: 1.07,
       child: Container(
@@ -826,6 +903,20 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
           color: bgColor,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: borderColor, width: 1.0),
+          boxShadow: [
+            if (isActive || isHero)
+              BoxShadow(
+                color: effectiveActiveColor.withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 3,
+                offset: const Offset(0, 1.5),
+              ),
+          ],
         ),
         child: Center(
           child: icon != null
@@ -851,14 +942,20 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
       bounceOvershoot: 1.04,
       child: Container(
         decoration: BoxDecoration(
-          color: theme.surfaceCard.withValues(alpha: 0.9),
+          color: theme.isDark
+              ? const Color(0xFF121520)
+              : theme.surfaceCard.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: theme.borderSubtle),
+          border: Border.all(
+            color: theme.isDark
+                ? const Color(0xFF22293C)
+                : theme.borderSubtle,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 3,
-              offset: const Offset(0, 1.5),
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -869,7 +966,7 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 2.0,
-              color: theme.textSecondary.withValues(alpha: 0.6),
+              color: theme.textSecondary.withValues(alpha: 0.65),
             ),
           ),
         ),
@@ -878,25 +975,46 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
   }
 
   Widget _buildEnterKey(PhonePadThemeData theme) {
+    final isNextLine = _isShifted;
     return SpringBounceTap(
-      onTap: () => _sendSpecialKey(SpecialKey.enter),
+      onTap: () {
+        if (_isShifted) {
+          _sendShortcut(ShortcutKey.shiftEnter);
+          if (!_isCapsLock) {
+            setState(() => _isShifted = false);
+          }
+        } else {
+          _sendSpecialKey(SpecialKey.enter);
+        }
+      },
+      onLongPress: () {
+        // Press & hold Enter sends Next Line (Shift+Enter)
+        _sendShortcut(ShortcutKey.shiftEnter);
+        widget.onKeyNameChanged('NEXT LINE (Shift+Enter)');
+      },
       pressedScale: 0.92,
       bounceOvershoot: 1.06,
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              theme.accentPrimary,
-              theme.accentPrimary.withValues(alpha: 0.85),
-            ],
+            colors: isNextLine
+                ? [
+                    theme.accentSecondary,
+                    theme.accentPrimary,
+                  ]
+                : [
+                    theme.accentPrimary,
+                    theme.accentPrimary.withValues(alpha: 0.85),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: theme.accentPrimary.withValues(alpha: 0.35),
-              blurRadius: 6,
+              color: (isNextLine ? theme.accentSecondary : theme.accentPrimary)
+                  .withValues(alpha: isNextLine ? 0.65 : 0.45),
+              blurRadius: isNextLine ? 12 : 8,
               offset: const Offset(0, 2),
             ),
           ],
@@ -907,10 +1025,24 @@ class _KeyboardDeckState extends State<KeyboardDeck> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.keyboard_return_rounded,
+                isNextLine
+                    ? Icons.subdirectory_arrow_right_rounded
+                    : Icons.keyboard_return_rounded,
                 size: 16,
                 color: theme.isDark ? Colors.black : Colors.white,
               ),
+              if (isNextLine) ...[
+                const SizedBox(width: 4),
+                Text(
+                  'NEXT',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                    color: theme.isDark ? Colors.black : Colors.white,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

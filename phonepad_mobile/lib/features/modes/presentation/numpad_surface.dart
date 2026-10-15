@@ -4,20 +4,30 @@ import '../../../core/network/transport.dart';
 import '../../../core/protocol/keys.dart';
 import '../../../core/protocol/opcode.dart';
 import '../../../core/protocol/packet.dart';
+import '../../../core/theme/colors.dart';
 import '../../../core/theme/liquid_glass_container.dart';
 import '../../../core/theme/spring_bounce_tap.dart';
 import '../../../core/theme/theme_controller.dart';
+import '../models/surface_mode.dart';
 import 'keyboard_deck.dart';
 
 /// Virtual 10-key numeric keypad and QWERTY keyboard with glassmorphic tactile keys.
 class NumpadSurface extends StatefulWidget {
   final ITransport transport;
   final VoidCallback onActivity;
+  final SurfaceMode currentMode;
+  final ValueChanged<SurfaceMode>? onModeChanged;
+  final VoidCallback? onSettingsTap;
+  final ConnectionStatus? connectionStatus;
 
   const NumpadSurface({
     super.key,
     required this.transport,
     required this.onActivity,
+    this.currentMode = SurfaceMode.keyboard,
+    this.onModeChanged,
+    this.onSettingsTap,
+    this.connectionStatus,
   });
 
   @override
@@ -52,7 +62,7 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
         final theme = ThemeController.instance.theme;
 
         return Container(
-          color: theme.backgroundPrimary,
+          color: theme.isDark ? Colors.black : theme.backgroundPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: _buildLandscapeLayout(theme),
         );
@@ -150,30 +160,77 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
   }
 
   Widget _buildTelemetryHeader(PhonePadThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: theme.surfaceCard.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.borderSubtle),
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (widget.connectionStatus ?? ConnectionStatus.connected) {
+      case ConnectionStatus.connected:
+        statusColor = PhonePadColors.successGreen;
+        statusIcon = Icons.wifi_rounded;
+        break;
+      case ConnectionStatus.connecting:
+      case ConnectionStatus.reconnecting:
+        statusColor = Colors.amber;
+        statusIcon = Icons.wifi_find_rounded;
+        break;
+      case ConnectionStatus.disconnected:
+        statusColor = PhonePadColors.errorRed;
+        statusIcon = Icons.wifi_off_rounded;
+        break;
+    }
+
+    return LiquidGlassContainer(
+      height: 48,
+      blur: 24.0,
+      borderRadius: BorderRadius.circular(16),
+      backgroundColor: theme.isDark
+          ? const Color(0xFF07090E).withValues(alpha: 0.95)
+          : theme.backgroundSecondary.withValues(alpha: 0.90),
+      borderGradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          theme.accentPrimary.withValues(alpha: 0.70),
+          theme.accentSecondary.withValues(alpha: 0.45),
+          theme.accentPrimary.withValues(alpha: 0.35),
+        ],
       ),
+      borderWidth: 1.3,
+      shadows: [
+        BoxShadow(
+          color: theme.accentPrimary.withValues(alpha: 0.16),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.5),
+          blurRadius: 14,
+          offset: const Offset(0, 4),
+        ),
+      ],
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Segmented Deck Switcher (123 NUMPAD vs KEYBOARD)
+          // Segmented Deck Switcher (Icons only, no text)
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              color: theme.surfaceCard.withValues(alpha: 0.8),
+              color: theme.isDark
+                  ? const Color(0xFF0C101A).withValues(alpha: 0.9)
+                  : theme.surfaceCard.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: theme.borderSubtle),
+              border: Border.all(
+                color: theme.isDark
+                    ? const Color(0xFF22293C)
+                    : theme.borderSubtle,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildModeTab(
-                  label: '123',
-                  fullLabel: '123 NUMPAD',
+                  key: const Key('deck_switch_numpad_btn'),
+                  tooltip: '123 Numpad',
                   icon: Icons.dialpad_rounded,
                   isSelected: !_isKeyboardMode,
                   onTap: () {
@@ -185,9 +242,10 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
                   },
                   theme: theme,
                 ),
+                const SizedBox(width: 4),
                 _buildModeTab(
-                  label: 'QWERTY',
-                  fullLabel: 'KEYBOARD',
+                  key: const Key('deck_switch_keyboard_btn'),
+                  tooltip: 'QWERTY Keyboard',
                   icon: Icons.keyboard_rounded,
                   isSelected: _isKeyboardMode,
                   onTap: () {
@@ -202,13 +260,19 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+
+          // Telemetry feedback badge (fixed width child, not Flexible, so Spacer pushes nav to corner)
+          if (_lastPressedKey.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: theme.accentPrimary.withValues(alpha: 0.15),
+                color: theme.accentPrimary.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: theme.accentPrimary.withValues(alpha: 0.45),
+                  width: 1.0,
+                ),
               ),
               child: Text(
                 _lastPressedKey,
@@ -222,58 +286,200 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
                 ),
               ),
             ),
-          ),
+          ],
+
+          // Spacer pushes navigation tabs fully to the corner with zero trailing gap
+          const Spacer(),
+
+          // Navigation section in same deck (Icons only, safe distance so no mistouch occurs)
+          if (widget.onModeChanged != null || widget.onSettingsTap != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.isDark
+                    ? const Color(0xFF0C101A).withValues(alpha: 0.9)
+                    : theme.surfaceCard.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: theme.isDark
+                      ? const Color(0xFF22293C)
+                      : theme.borderSubtle,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildNavIconButton(
+                    icon: Icons.touch_app_rounded,
+                    tooltip: 'Trackpad',
+                    isSelected: widget.currentMode == SurfaceMode.trackpad,
+                    onTap: () => widget.onModeChanged?.call(SurfaceMode.trackpad),
+                    theme: theme,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildNavIconButton(
+                    icon: Icons.keyboard_rounded,
+                    tooltip: 'Keyboard',
+                    isSelected: widget.currentMode == SurfaceMode.keyboard,
+                    onTap: () => widget.onModeChanged?.call(SurfaceMode.keyboard),
+                    theme: theme,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildNavIconButton(
+                    icon: Icons.settings_remote_rounded,
+                    tooltip: 'Remote',
+                    isSelected: widget.currentMode == SurfaceMode.remote,
+                    onTap: () => widget.onModeChanged?.call(SurfaceMode.remote),
+                    theme: theme,
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 1,
+                    height: 18,
+                    color: theme.isDark
+                        ? const Color(0xFF22293C)
+                        : theme.borderSubtle,
+                  ),
+                  const SizedBox(width: 6),
+                  SpringBounceTap(
+                    onTap: widget.onSettingsTap ?? () {},
+                    child: Tooltip(
+                      message: widget.connectionStatus == ConnectionStatus.connected ? 'Connected' : 'Connection Hub',
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: statusColor.withValues(alpha: 0.15),
+                          border: Border.all(color: statusColor.withValues(alpha: 0.5), width: 1.0),
+                        ),
+                        child: Icon(statusIcon, color: statusColor, size: 15),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  SpringBounceTap(
+                    onTap: widget.onSettingsTap ?? () {},
+                    child: Tooltip(
+                      message: 'Settings',
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: theme.isDark
+                              ? const Color(0xFF141824)
+                              : theme.surfaceCard,
+                          border: Border.all(
+                            color: theme.isDark
+                                ? const Color(0xFF262E44)
+                                : theme.borderSubtle,
+                          ),
+                        ),
+                        child: Icon(Icons.tune_rounded, size: 14, color: theme.textSecondary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 
+  Widget _buildNavIconButton({
+    required IconData icon,
+    required String tooltip,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required PhonePadThemeData theme,
+  }) {
+    return SpringBounceTap(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Tooltip(
+        message: tooltip,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.accentPrimary.withValues(alpha: 0.25)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? theme.accentPrimary.withValues(alpha: 0.65) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isSelected ? theme.accentPrimary : theme.textSecondary.withValues(alpha: 0.8),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildModeTab({
-    required String label,
-    required String fullLabel,
+    Key? key,
+    required String tooltip,
     required IconData icon,
     required bool isSelected,
     required VoidCallback onTap,
     required PhonePadThemeData theme,
   }) {
     return Material(
+      key: key,
       color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.accentPrimary.withValues(alpha: 0.22)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected
-                  ? theme.accentPrimary.withValues(alpha: 0.5)
-                  : Colors.transparent,
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 32,
+            height: 28,
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        theme.accentPrimary.withValues(alpha: 0.32),
+                        theme.accentPrimary.withValues(alpha: 0.16),
+                      ],
+                    )
+                  : null,
+              color: isSelected ? null : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected
+                    ? theme.accentPrimary.withValues(alpha: 0.70)
+                    : Colors.transparent,
+                width: 1.0,
+              ),
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                    color: theme.accentPrimary.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
+                  ),
+              ],
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
+            child: Center(
+              child: Icon(
                 icon,
-                size: 13,
+                size: 16,
                 color: isSelected ? theme.accentPrimary : theme.textSecondary,
               ),
-              const SizedBox(width: 4),
-              Text(
-                fullLabel,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: isSelected ? theme.accentPrimary : theme.textSecondary,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -288,12 +494,16 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
         key == NumpadKey.backspace;
 
     final bgColor = isOperator
-        ? theme.accentSecondary.withValues(alpha: 0.14)
-        : theme.surfaceCard.withValues(alpha: 0.88);
+        ? theme.accentSecondary.withValues(alpha: 0.18)
+        : (theme.isDark
+            ? const Color(0xFF11141E)
+            : theme.surfaceCard.withValues(alpha: 0.88));
 
     final borderColor = isOperator
-        ? theme.accentSecondary.withValues(alpha: 0.45)
-        : theme.borderSubtle.withValues(alpha: 0.8);
+        ? theme.accentSecondary.withValues(alpha: 0.55)
+        : (theme.isDark
+            ? const Color(0xFF22293C)
+            : theme.borderSubtle.withValues(alpha: 0.8));
 
     final textColor = isOperator
         ? theme.accentSecondary
@@ -311,10 +521,16 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
         borderWidth: 1.1,
         shadows: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
+          if (isOperator)
+            BoxShadow(
+              color: theme.accentSecondary.withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 1),
+            ),
         ],
         child: Center(
           child: Text(
@@ -341,14 +557,14 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
         backgroundColor: theme.accentPrimary.withValues(alpha: 0.95),
         borderGradient: LinearGradient(
           colors: [
-            Colors.white.withValues(alpha: 0.5),
-            theme.accentPrimary.withValues(alpha: 0.7),
+            Colors.white.withValues(alpha: 0.6),
+            theme.accentPrimary.withValues(alpha: 0.8),
           ],
         ),
         shadows: [
           BoxShadow(
-            color: theme.accentPrimary.withValues(alpha: 0.4),
-            blurRadius: 14,
+            color: theme.accentPrimary.withValues(alpha: 0.45),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
@@ -358,7 +574,7 @@ class _NumpadSurfaceState extends State<NumpadSurface> {
             children: [
               Icon(
                 Icons.keyboard_return_rounded,
-                size: 18,
+                size: 20,
                 color: theme.isDark ? Colors.black : Colors.white,
               ),
               const SizedBox(width: 8),
