@@ -35,6 +35,27 @@ pub async fn run_tcp_server(
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
+                // 1. Strict Network Isolation Defense: Reject public WAN / external IPs immediately
+                if !crate::server::is_trusted_private_ip(&addr.ip()) {
+                    log::warn!(
+                        "🚨 SECURITY SHIELD: Blocked connection from non-private WAN IP {}. Only local LAN/loopback connections are permitted.",
+                        addr
+                    );
+                    drop(stream);
+                    continue;
+                }
+
+                // 2. Subnet Validation: Client must be on same local network subnet or loopback
+                let local_ip = state.local_ip.lock().map(|s| s.clone()).unwrap_or_else(|_| "127.0.0.1".into());
+                if !crate::server::is_same_subnet(&addr.ip(), &local_ip) {
+                    log::warn!(
+                        "🚨 SECURITY SHIELD: Blocked connection from foreign subnet {} (Host is on {}). Only devices on the same Wi-Fi network are allowed.",
+                        addr, local_ip
+                    );
+                    drop(stream);
+                    continue;
+                }
+
                 let _ = stream.set_nodelay(true);
                 log::info!("📱 PhonePad client connected from {} (TCP_NODELAY enabled: 0ms buffering)", addr);
 

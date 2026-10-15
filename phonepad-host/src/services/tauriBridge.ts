@@ -54,7 +54,10 @@ export const tauriBridge = {
       }
     }
     try {
-      const res = await fetch("http://127.0.0.1:4243/api/service/toggle", { method: "POST" });
+      const res = await fetch("http://127.0.0.1:4243/api/service/toggle", {
+        method: "POST",
+        headers: { "X-PhonePad-Client": "Desktop-GUI" },
+      });
       if (res.ok) {
         const data = await res.json();
         return Boolean(data.isServiceEnabled);
@@ -89,7 +92,10 @@ export const tauriBridge = {
     try {
       await fetch("http://127.0.0.1:4243/api/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-PhonePad-Client": "Desktop-GUI",
+        },
         body: JSON.stringify(settings),
       });
       return true;
@@ -120,6 +126,24 @@ export const tauriBridge = {
     }
   },
 
+  startDragging: async (): Promise<void> => {
+    if (isTauri) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("start_drag");
+        return;
+      } catch {
+        // Fallback to window startDragging
+      }
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().startDragging();
+      } catch (e) {
+        console.warn("startDragging error:", e);
+      }
+    }
+  },
+
   exitApp: async (): Promise<void> => {
     if (isTauri) {
       try {
@@ -130,7 +154,10 @@ export const tauriBridge = {
       }
     }
     try {
-      await fetch("http://127.0.0.1:4243/api/shutdown", { method: "POST" });
+      await fetch("http://127.0.0.1:4243/api/shutdown", {
+        method: "POST",
+        headers: { "X-PhonePad-Client": "Desktop-GUI" },
+      });
     } catch {
       // ignore
     }

@@ -3,6 +3,7 @@
 use byteorder::{ByteOrder, LittleEndian};
 
 pub const HANDSHAKE_MAGIC: u8 = 0xAA;
+pub const PROTOCOL_VERSION_1: u8 = 0x01;
 pub const PROTOCOL_VERSION_2: u8 = 0x02;
 pub const HANDSHAKE_SIZE: usize = 12;
 
@@ -59,8 +60,14 @@ impl HandshakeFrame {
             return Err("Invalid handshake magic byte");
         }
         let version = buf[1];
+        if version != PROTOCOL_VERSION_1 && version != PROTOCOL_VERSION_2 {
+            return Err("Unsupported handshake protocol version");
+        }
         let device_id = LittleEndian::read_u32(&buf[2..6]);
         let device_type = DeviceType::from(LittleEndian::read_u16(&buf[6..8]));
+        if device_type == DeviceType::Unknown {
+            return Err("Invalid or unrecognized client device type");
+        }
         let auth_pin = LittleEndian::read_u32(&buf[8..12]);
 
         Ok(Self {

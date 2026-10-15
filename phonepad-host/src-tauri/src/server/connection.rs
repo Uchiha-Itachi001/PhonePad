@@ -1,7 +1,7 @@
 //! Connection session processor for PhonePad byte streams.
 
 use crate::companion::CompanionTelemetry;
-use crate::gesture::{BallisticsEngine, GestureFilter, GestureFsm};
+use crate::gesture::{BallisticsEngine, FsmState, GestureFilter, GestureFsm};
 use crate::input::InputInjector;
 use crate::protocol::{Opcode, Packet, PACKET_SIZE};
 use super::state::HostState;
@@ -45,7 +45,29 @@ impl<I: InputInjector> SessionHandler<I> {
     }
 
     /// Dispatches a single parsed packet to the input pipeline.
-    pub fn handle_packet(&mut self, packet: Packet) {
+    pub fn handle_packet(&mut self, mut packet: Packet) {
+        // Defensive bounding: clamp deltas to prevent integer overflow or erratic input injection
+        match packet.opcode {
+            Opcode::Move | Opcode::DragStart => {
+                packet.dx = packet.dx.clamp(-2048, 2048);
+                packet.dy = packet.dy.clamp(-2048, 2048);
+            }
+            Opcode::Scroll => {
+                if packet.flags & crate::protocol::FLAG_DISCRETE_NOTCH != 0 {
+                    packet.dx = packet.dx.clamp(-20, 20);
+                    packet.dy = packet.dy.clamp(-20, 20);
+                } else {
+                    packet.dx = packet.dx.clamp(-2048, 2048);
+                    packet.dy = packet.dy.clamp(-2048, 2048);
+                }
+            }
+            Opcode::Zoom => {
+                packet.dx = packet.dx.clamp(-20, 20);
+                packet.dy = packet.dy.clamp(-50, 50);
+            }
+            _ => {}
+        }
+
         self.packets_received += 1;
         self.telemetry.record_packet(packet.flags);
 
@@ -68,6 +90,10 @@ impl<I: InputInjector> SessionHandler<I> {
         // Give the Gesture FSM first priority (3-finger swipes, drag-lock)
         if self.fsm.process_packet(&packet, &mut self.injector) {
             return;
+        }
+
+        if packet.opcode != Opcode::Zoom {
+            self.injector.zoom_finish();
         }
 
         match packet.opcode {
@@ -100,16 +126,24 @@ impl<I: InputInjector> SessionHandler<I> {
                 self.ballistics.reset_accumulator();
             }
             Opcode::Scroll => {
-                // Safety: Scrolling must NEVER drag, copy, or select text
-                self.fsm.reset(&mut self.injector);
-                let (fx, fy) = if packet.flags & crate::protocol::FLAG_HIGH_RES != 0 {
-                    (packet.dx as f32 / 8.0, packet.dy as f32 / 8.0)
+                // If not actively holding a drag lock, reset FSM gestures
+                if self.fsm.state() != FsmState::DragLock {
+                    self.fsm.reset(&mut self.injector);
+                }
+                if packet.flags & crate::protocol::FLAG_DISCRETE_NOTCH != 0 {
+                    // Discrete notch scrolling (e.g. remote scroll rocker, reels navigation)
+                    // packet.dy is exact notch count (+1 = 1 notch up / -1 = 1 notch down)
+                    self.injector.scroll(packet.dx as i32, packet.dy as i32);
                 } else {
-                    (packet.dx as f32, packet.dy as f32)
-                };
-                let (wheel_x, wheel_y) = self.filter.process_smooth_scroll(fx, fy);
-                if wheel_x != 0 || wheel_y != 0 {
-                    self.injector.scroll_raw(wheel_x, wheel_y);
+                    let (fx, fy) = if packet.flags & crate::protocol::FLAG_HIGH_RES != 0 {
+                        (packet.dx as f32 / 8.0, packet.dy as f32 / 8.0)
+                    } else {
+                        (packet.dx as f32, packet.dy as f32)
+                    };
+                    let (wheel_x, wheel_y) = self.filter.process_smooth_scroll(fx, fy);
+                    if wheel_x != 0 || wheel_y != 0 {
+                        self.injector.scroll_raw(wheel_x, wheel_y);
+                    }
                 }
             }
             Opcode::DragStart => {
@@ -132,9 +166,12 @@ impl<I: InputInjector> SessionHandler<I> {
                 self.fsm.reset(&mut self.injector);
             }
             Opcode::Zoom => {
-                log::debug!("Zoom trigger (Pinch): notches={}", packet.dy);
-                self.fsm.reset(&mut self.injector);
-                self.injector.zoom(packet.dy as i32);
+                log::debug!("Zoom trigger (Pinch): delta={}", packet.dy);
+                if packet.dy == 0 {
+                    self.injector.zoom_finish();
+                } else {
+                    self.injector.zoom(packet.dy as i32);
+                }
             }
             Opcode::Heartbeat => {
                 log::trace!("Heartbeat received (Flags: {:08b})", packet.flags);
@@ -163,31 +200,42 @@ impl<I: InputInjector> SessionHandler<I> {
             }
         }
 
-        // If touch is no longer active, reset sub-pixel accumulator
-        if !packet.is_touch_active() && packet.opcode == Opcode::Move {
-            self.ballistics.reset_accumulator();
-            self.filter.reset();
+        // If touch is no longer active, reset sub-pixel accumulator and finish zoom
+        if !packet.is_touch_active() {
+            if packet.opcode == Opcode::Move {
+                self.ballistics.reset_accumulator();
+                self.filter.reset();
+            }
+            self.injector.zoom_finish();
         }
     }
 
     /// Asynchronously consumes 6-byte frames from a stream until disconnect or watchdog timeout.
-    pub async fn run_stream<R>(&mut self, mut stream: R, idle_timeout: Duration) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    pub async fn run_stream<R>(&mut self, stream: R, idle_timeout: Duration) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     where
         R: AsyncRead + Unpin,
     {
+        let mut reader = tokio::io::BufReader::with_capacity(1024, stream);
         let mut buf = [0u8; PACKET_SIZE];
         let mut first_frame = true;
         let mut packet_window_start = std::time::Instant::now();
         let mut packet_window_count = 0u32;
 
+        let handshake_timeout = Duration::from_secs(3);
         loop {
-            // Apply watchdog timeout: if no packets arrive before timeout, signal link drop
-            match timeout(idle_timeout, stream.read_exact(&mut buf)).await {
+            // Handshake deadline (3s) on initial frame; standard idle watchdog timeout thereafter
+            let active_timeout = if first_frame { handshake_timeout } else { idle_timeout };
+
+            match timeout(active_timeout, reader.read_exact(&mut buf)).await {
                 Ok(Ok(_)) => {
-                    if first_frame && buf[0] == crate::protocol::HANDSHAKE_MAGIC {
+                    if first_frame {
+                        if buf[0] != crate::protocol::HANDSHAKE_MAGIC {
+                            log::warn!("🚨 SECURITY: Connection rejected - First frame was not a valid PhonePad handshake (magic: 0x{:02X})", buf[0]);
+                            break;
+                        }
                         first_frame = false;
                         let mut extra = [0u8; 6];
-                        if let Err(e) = stream.read_exact(&mut extra).await {
+                        if let Err(e) = reader.read_exact(&mut extra).await {
                             log::warn!("Failed reading handshake extra bytes: {}", e);
                             break;
                         }
@@ -196,21 +244,19 @@ impl<I: InputInjector> SessionHandler<I> {
                         handshake_buf[6..12].copy_from_slice(&extra);
                         match crate::protocol::HandshakeFrame::from_bytes(&handshake_buf) {
                             Ok(hs) => {
-                                if let Some(ref s) = self.state {
-                                    if s.auth_pin != 0 && hs.auth_pin != s.auth_pin {
-                                        log::warn!(
-                                            "🚨 SECURITY DEFENSE: Unauthorized connection rejected! Client PIN ({}) != Host PIN ({}). Session terminated.",
-                                            hs.auth_pin,
-                                            s.auth_pin
-                                        );
-                                        break;
-                                    }
-                                }
                                 log::info!(
-                                    "✨ Client handshake verified: device_id=0x{:08X}, type={:?}, PIN validated",
+                                    "✨ Client handshake verified: device_id=0x{:08X}, type={:?}",
                                     hs.device_id,
                                     hs.device_type
                                 );
+                                if let Some(ref s) = self.state {
+                                    let device_name = match hs.device_type {
+                                        crate::protocol::DeviceType::Phone => "PhonePad Mobile",
+                                        crate::protocol::DeviceType::Tablet => "PhonePad Tablet",
+                                        _ => "PhonePad Client",
+                                    };
+                                    s.set_connected(device_name, "Wi-Fi (TCP)");
+                                }
                             }
                             Err(e) => {
                                 log::warn!("Security violation: Handshake rejected ({}) - closing session.", e);
@@ -232,8 +278,8 @@ impl<I: InputInjector> SessionHandler<I> {
                         }
                     }
 
-                    if first_frame {
-                        if let Some(ref s) = self.state {
+                    if let Some(ref s) = self.state {
+                        if !s.is_connected.load(std::sync::atomic::Ordering::Relaxed) {
                             s.set_connected("Mobile Phone", "Wi-Fi (TCP)");
                         }
                     }
@@ -279,12 +325,14 @@ mod tests {
 
         let mut session = SessionHandler::new(dummy, ballistics, filter, fsm);
 
-        // Prepare mock 18-byte stream (3 packets)
+        // Prepare mock stream with initial valid handshake followed by 3 touch packets
+        let hs = crate::protocol::HandshakeFrame::new(0x12345678, crate::protocol::DeviceType::Phone, 0);
         let p1 = Packet::new(Opcode::Move, 10, 5, 0x01);
         let p2 = Packet::new(Opcode::TapLeft, 0, 0, 0x01);
         let p3 = Packet::new(Opcode::TapRight, 0, 0, 0x02);
 
         let mut stream_bytes = Vec::new();
+        stream_bytes.extend_from_slice(&hs.to_bytes());
         stream_bytes.extend_from_slice(&p1.to_bytes());
         stream_bytes.extend_from_slice(&p2.to_bytes());
         stream_bytes.extend_from_slice(&p3.to_bytes());
@@ -350,29 +398,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_session_handler_rejects_unauthorized_pin() {
+    async fn test_session_handler_accepts_same_wifi_client() {
         let dummy = DummyInjector::new();
         let ballistics = BallisticsEngine::default();
         let filter = GestureFilter::default();
         let fsm = GestureFsm::default();
 
-        let state = std::sync::Arc::new(crate::server::HostState::new("127.0.0.1".into(), 4242, "PC".into(), 9999));
+        let state = std::sync::Arc::new(crate::server::HostState::new("127.0.0.1".into(), 4242, "PC".into(), 0));
         let mut session = SessionHandler::new(dummy, ballistics, filter, fsm).with_state(state);
 
-        // Attacker attempts with invalid PIN 1111
-        let attacker_hs = crate::protocol::HandshakeFrame::new(0xDEADBEEF, crate::protocol::DeviceType::Phone, 1111);
+        // Same Wi-Fi client connects directly without PIN friction
+        let hs = crate::protocol::HandshakeFrame::new(0xDEADBEEF, crate::protocol::DeviceType::Phone, 0);
         let p1 = Packet::new(Opcode::TapLeft, 0, 0, 0x01);
 
         let mut stream_bytes = Vec::new();
-        stream_bytes.extend_from_slice(&attacker_hs.to_bytes());
+        stream_bytes.extend_from_slice(&hs.to_bytes());
         stream_bytes.extend_from_slice(&p1.to_bytes());
 
         let reader = &stream_bytes[..];
         session.run_stream(reader, Duration::from_millis(500)).await.unwrap();
 
-        // Must drop and reject: 0 packets processed, 0 clicks injected!
-        assert_eq!(session.packets_received, 0);
-        assert_eq!(session.injector.left_clicks, 0);
+        assert_eq!(session.packets_received, 1);
+        assert_eq!(session.injector.left_clicks, 1);
     }
 
     #[tokio::test]
@@ -399,6 +446,30 @@ mod tests {
         // Successfully authorized
         assert_eq!(session.packets_received, 1);
         assert_eq!(session.injector.left_clicks, 1);
+    }
+
+    #[tokio::test]
+    async fn test_session_handler_discrete_notch_scroll_and_zoom() {
+        let dummy = DummyInjector::new();
+        let ballistics = BallisticsEngine::default();
+        let filter = GestureFilter::default();
+        let fsm = GestureFsm::default();
+        let mut session = SessionHandler::new(dummy, ballistics, filter, fsm);
+
+        // 1. Discrete notch scroll down (1 notch = -120 units)
+        let p_scroll = Packet::new(Opcode::Scroll, 0, -1, crate::protocol::FLAG_DISCRETE_NOTCH);
+        session.handle_packet(p_scroll);
+        assert_eq!(session.injector.scroll_raw_y, -120);
+
+        // 2. Zoom in increment
+        let p_zoom = Packet::new(Opcode::Zoom, 0, 1, 0x01);
+        session.handle_packet(p_zoom);
+        assert_eq!(session.injector.zoom_notches, 1);
+
+        // 3. Zoom finish packet
+        let p_zoom_finish = Packet::new(Opcode::Zoom, 0, 0, 0x00);
+        session.handle_packet(p_zoom_finish);
+        assert_eq!(session.injector.zoom_finished_count, 1);
     }
 }
 

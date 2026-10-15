@@ -19,6 +19,8 @@ import 'package:phonepad_mobile/core/theme/liquid_glass_container.dart';
 import 'package:phonepad_mobile/features/touch/presentation/liquid_speed_dial.dart';
 import 'package:phonepad_mobile/features/splash/presentation/splash_screen.dart';
 import 'package:phonepad_mobile/features/modes/presentation/keyboard_deck.dart';
+import 'package:phonepad_mobile/features/connection/presentation/connection_hub.dart';
+import 'package:phonepad_mobile/features/connection/presentation/qr_scanner_view.dart';
 
 class MockTransport implements ITransport {
   final _controller = StreamController<ConnectionStatus>.broadcast();
@@ -512,6 +514,69 @@ void main() {
     expect(detector.isDragLocked, isFalse);
   });
 
+  test('TouchDetector smart parallel scroll suppresses pinch-to-zoom during non-parallel drift', () {
+    final detector = TouchDetector();
+    detector.twoFingerNavEnabled = false;
+    detector.pinchZoomEnabled = true;
+
+    // 2 fingers down at distance 80px
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 200.0)));
+    detector.onPointerDown(const PointerDownEvent(pointer: 2, position: Offset(180.0, 200.0)));
+
+    // Scroll down with both fingers, with slight non-parallel drift (span drifts slightly 1-2px)
+    final scroll1 = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(101.0, 208.0),
+      delta: Offset(1.0, 8.0),
+    ));
+    expect(scroll1, isNotNull);
+    expect(scroll1!.opcode, equals(Opcode.scroll));
+
+    // Next step with finger 2 drifting slightly
+    final scroll2 = detector.onPointerMove(const PointerMoveEvent(
+      pointer: 2,
+      position: Offset(182.0, 210.0),
+      delta: Offset(2.0, 10.0),
+    ));
+    expect(scroll2, isNotNull);
+    expect(scroll2!.opcode, equals(Opcode.scroll));
+    // Must NOT be zoom!
+    expect(scroll2.opcode, isNot(equals(Opcode.zoom)));
+  });
+
+  test('TouchDetector triggers edge auto-scroll during drag-and-drop near borders', () async {
+    final detector = TouchDetector();
+    detector.surfaceSize = const Size(400.0, 800.0);
+
+    PhonePadPacket? edgePacket;
+    detector.onEdgeScroll = (p) {
+      edgePacket = p;
+    };
+
+    // Tap 1
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(200.0, 400.0)));
+    detector.onPointerUp(const PointerUpEvent(pointer: 1, position: Offset(200.0, 400.0)));
+
+    // Tap 2 -> Drag Lock
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(200.0, 400.0)));
+    expect(detector.isDragLocked, isTrue);
+
+    // Move to bottom edge (y = 785 is within 32px of 800)
+    detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(200.0, 785.0),
+      delta: Offset(0.0, 385.0),
+    ));
+
+    // Wait 50ms for periodic edge scroll ticker to tick
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(edgePacket, isNotNull);
+    expect(edgePacket!.opcode, equals(Opcode.scroll));
+    expect(edgePacket!.dy, lessThan(0)); // Scrolling down (negative dy in Windows MOUSEEVENTF_WHEEL)
+
+    detector.dispose();
+  });
+
   test('TouchDetector 2-finger scroll accumulates sub-pixel movements smoothly', () {
     final detector = TouchDetector();
     detector.twoFingerNavEnabled = false;
@@ -555,6 +620,45 @@ void main() {
     expect(p1!.opcode, equals(Opcode.move));
     expect(p1.dx, equals(2));
     expect(p1.isHighRes, isTrue);
+  });
+
+  test('TouchDetector launches kinetic inertial scroll and brakes immediately on pointer down', () async {
+    final detector = TouchDetector();
+    final packets = <PhonePadPacket>[];
+    detector.onInertialScroll = (p) => packets.add(p);
+
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 100.0)));
+    detector.onPointerDown(const PointerDownEvent(pointer: 2, position: Offset(140.0, 100.0)));
+
+    // Fast 2-finger scroll over 2 frames (move 10px then 15px in Y)
+    detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.0, 110.0),
+      delta: Offset(0.0, 10.0),
+    ));
+    await Future.delayed(const Duration(milliseconds: 16));
+    detector.onPointerMove(const PointerMoveEvent(
+      pointer: 1,
+      position: Offset(100.0, 125.0),
+      delta: Offset(0.0, 15.0),
+    ));
+
+    // Release fingers with flick
+    detector.onPointerUp(const PointerUpEvent(pointer: 1, position: Offset(100.0, 125.0)));
+    detector.onPointerUp(const PointerUpEvent(pointer: 2, position: Offset(140.0, 100.0)));
+
+    // Wait for inertial ticks to emit
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(packets, isNotEmpty);
+    expect(packets.first.opcode, equals(Opcode.scroll));
+    final countBeforeBrake = packets.length;
+
+    // Tap to brake: touching down immediately halts inertia
+    detector.onPointerDown(const PointerDownEvent(pointer: 1, position: Offset(100.0, 120.0)));
+    await Future.delayed(const Duration(milliseconds: 40));
+    expect(packets.length, equals(countBeforeBrake));
+
+    detector.dispose();
   });
 
   test('TouchDetector rotateCoordinates rotates movement deltas 90 degrees', () {
@@ -917,6 +1021,92 @@ void main() {
     // State returns to unmuted
     expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTE')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('mute_btn')), matching: find.text('MUTED')), findsNothing);
+  });
+
+  testWidgets('ConnectionHubModal renders desktop app download instruction banner', (WidgetTester tester) async {
+    final discoveryClient = DiscoveryClient();
+    try {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ConnectionHubModal(
+            discoveryClient: discoveryClient,
+            currentDestination: '',
+            onConnect: (_, __, ___) {},
+          ),
+        ),
+      ));
+
+      expect(find.text('Desktop App Required'), findsOneWidget);
+      expect(find.textContaining('Download and run PhonePad Host'), findsOneWidget);
+    } finally {
+      discoveryClient.stopDiscovery();
+      discoveryClient.dispose();
+    }
+  });
+
+  test('QrPairingData parses phonepad://connect URI and raw IP:port strings', () {
+    // Case 1: Standard Host QR URI
+    final qr1 = QrPairingData.parse(
+      'phonepad://connect?ip=192.168.1.50&port=4242&name=My-Laptop&pin=9999',
+    );
+    expect(qr1, isNotNull);
+    expect(qr1!.ip, '192.168.1.50');
+    expect(qr1.port, 4242);
+    expect(qr1.name, 'My-Laptop');
+    expect(qr1.pin, 9999);
+    expect(qr1.destination, '192.168.1.50:4242');
+
+    // Case 2: Raw ip:port:pin
+    final qr2 = QrPairingData.parse('10.0.0.5:5000:1234');
+    expect(qr2, isNotNull);
+    expect(qr2!.ip, '10.0.0.5');
+    expect(qr2.port, 5000);
+    expect(qr2.pin, 1234);
+
+    // Case 3: Raw ip:port
+    final qr3 = QrPairingData.parse('10.0.0.5:5000');
+    expect(qr3, isNotNull);
+    expect(qr3!.ip, '10.0.0.5');
+    expect(qr3.port, 5000);
+    expect(qr3.pin, 0);
+
+    // Case 4: Raw IP only
+    final qr4 = QrPairingData.parse('192.168.1.100');
+    expect(qr4, isNotNull);
+    expect(qr4!.ip, '192.168.1.100');
+    expect(qr4.port, 4242);
+    expect(qr4.pin, 0);
+
+    // Case 5: Malformed
+    expect(QrPairingData.parse(''), isNull);
+    expect(QrPairingData.parse('   '), isNull);
+    expect(QrPairingData.parse('random-junk-text'), isNull);
+  });
+
+  testWidgets('ConnectionHubModal renders Wi-Fi Auto-Discovery host view without QR or Manual IP', (WidgetTester tester) async {
+    final discoveryClient = DiscoveryClient();
+    try {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ConnectionHubModal(
+            discoveryClient: discoveryClient,
+            currentDestination: '',
+            onConnect: (_, __, ___) {},
+          ),
+        ),
+      ));
+
+      // Streamlined Same-WiFi view: No QR or Manual IP subtabs
+      expect(find.text('Scan QR'), findsNothing);
+      expect(find.text('Manual IP'), findsNothing);
+      expect(find.byIcon(Icons.qr_code_scanner_rounded), findsNothing);
+      // Wi-Fi Host discovery header and empty state search refresh button
+      expect(find.text('DISCOVERED PC HOSTS'), findsOneWidget);
+      expect(find.text('Refresh Scan'), findsOneWidget);
+    } finally {
+      discoveryClient.stopDiscovery();
+      discoveryClient.dispose();
+    }
   });
 }
 

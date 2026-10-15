@@ -23,7 +23,7 @@ export const TelemetryBento: React.FC<TelemetryBentoProps> = ({
     <div className="bento-grid">
       <div className="bento-tile">
         <div className="tile-label">
-          <Activity size={13} color="#10b981" />
+          <Activity size={13} color="#3b82f6" />
           <span>Packet Rate</span>
         </div>
         <div className="tile-value">{packetsPerSec} Hz</div>
@@ -41,7 +41,7 @@ export const TelemetryBento: React.FC<TelemetryBentoProps> = ({
               style={{
                 width: `${ppsPercent}%`,
                 height: "100%",
-                background: "#10b981",
+                background: "#3b82f6",
                 transition: "width 0.15s ease",
               }}
             />
@@ -60,7 +60,7 @@ export const TelemetryBento: React.FC<TelemetryBentoProps> = ({
 
       <div className="bento-tile">
         <div className="tile-label">
-          <Gauge size={13} color="#10b981" />
+          <Gauge size={13} color="#3b82f6" />
           <span>Engine Latency</span>
         </div>
         <div className="tile-value">&lt; 1.8 ms</div>
@@ -69,7 +69,7 @@ export const TelemetryBento: React.FC<TelemetryBentoProps> = ({
 
       <div className="bento-tile">
         <div className="tile-label">
-          <Radio size={13} color={isConnected ? "#10b981" : "#64748b"} />
+          <Radio size={13} color={isConnected ? "#3b82f6" : "#64748b"} />
           <span>Connected Link</span>
         </div>
         <div
@@ -79,7 +79,7 @@ export const TelemetryBento: React.FC<TelemetryBentoProps> = ({
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            color: isConnected ? "#10b981" : "#94a3b8",
+            color: isConnected ? "#3b82f6" : "#94a3b8",
           }}
           title={clientName}
         >

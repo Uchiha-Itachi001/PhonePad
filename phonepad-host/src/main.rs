@@ -31,14 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let local_ip = get_local_ip();
     let computer_name = get_computer_name();
 
-    // Generate secure 4-digit zero-trust pairing PIN (1000..=9999) using system time entropy
-    let entropy = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(42424242);
-    let auth_pin = ((entropy % 9000) + 1000) as u32;
+    let auth_pin: u32 = 0;
 
-    log::info!("Host IP: {}:{}, Host Name: {}, Pairing PIN: {:04}", local_ip, port, computer_name, auth_pin);
+    log::info!("Host IP: {}:{}, Host Name: {}, Mode: Same Wi-Fi Auto-Discovery", local_ip, port, computer_name);
 
     let state = Arc::new(HostState::new(local_ip, port, computer_name, auth_pin));
 

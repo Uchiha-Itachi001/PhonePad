@@ -4,17 +4,19 @@ import '../../../core/network/discovery_client.dart';
 import '../../../core/power/power_governor.dart';
 import '../../../core/theme/theme_controller.dart';
 
-/// Redesigned Control Center modal with unified Connections tab, sub-tabs, and AMOLED power settings.
+/// Control Center modal with unified same Wi-Fi Auto-Discovery, Appearance, Gestures, and Power Saver.
 class ConnectionHubModal extends StatefulWidget {
   final DiscoveryClient discoveryClient;
   final String currentDestination;
   final Function(String address, String displayName, int pin) onConnect;
+  final int initialSubTab;
 
   const ConnectionHubModal({
     super.key,
     required this.discoveryClient,
     required this.currentDestination,
     required this.onConnect,
+    this.initialSubTab = 0,
   });
 
   @override
@@ -24,12 +26,6 @@ class ConnectionHubModal extends StatefulWidget {
 class _ConnectionHubModalState extends State<ConnectionHubModal>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _connectionSubTab = 0; // 0: Wi-Fi Auto, 1: Manual IP
-
-  final TextEditingController _ipController =
-      TextEditingController(text: '192.168.1.15:4242');
-  final TextEditingController _pinController = TextEditingController();
-
   List<DiscoveredHost> _wifiHosts = [];
 
   @override
@@ -52,8 +48,6 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
   @override
   void dispose() {
     _tabController.dispose();
-    _ipController.dispose();
-    _pinController.dispose();
     super.dispose();
   }
 
@@ -254,107 +248,79 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
 
     return Column(
       children: [
-        // Sub-tabs Segmented Pill Bar
+        // Desktop App Download Instruction Banner
         Container(
-          margin: EdgeInsets.symmetric(horizontal: 20, vertical: isLandscape ? 3 : 6),
-          padding: const EdgeInsets.all(3),
+          margin: EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: isLandscape ? 3 : 6,
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: isLandscape ? 5 : 8,
+          ),
           decoration: BoxDecoration(
-            color: theme.surfaceCard.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.borderSubtle),
-          ),
-          child: Row(
-            children: [
-              _buildSubTabButton(
-                title: 'Wi-Fi Auto',
-                icon: Icons.wifi_rounded,
-                index: 0,
-                theme: theme,
-                isLandscape: isLandscape,
-              ),
-              _buildSubTabButton(
-                title: 'Direct / Manual IP',
-                icon: Icons.lan_rounded,
-                index: 1,
-                theme: theme,
-                isLandscape: isLandscape,
-              ),
-            ],
-          ),
-        ),
-
-        SizedBox(height: isLandscape ? 3 : 6),
-
-        // Sub-tab Content
-        Expanded(
-          child: IndexedStack(
-            index: _connectionSubTab,
-            children: [
-              _buildWifiAutoContent(theme),
-              _buildManualIpContent(theme),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSubTabButton({
-    required String title,
-    required IconData icon,
-    required int index,
-    required PhonePadThemeData theme,
-    required bool isLandscape,
-  }) {
-    final isSelected = _connectionSubTab == index;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          setState(() {
-            _connectionSubTab = index;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(vertical: isLandscape ? 4 : 7),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.accentPrimary.withValues(alpha: 0.22)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
+            color: theme.accentPrimary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected
-                  ? theme.accentPrimary.withValues(alpha: 0.6)
-                  : Colors.transparent,
+              color: theme.accentPrimary.withValues(alpha: 0.22),
             ),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: isLandscape ? 13 : 14,
-                color: isSelected ? theme.accentPrimary : theme.textSecondary,
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: theme.accentPrimary.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.wifi_rounded,
+                  size: isLandscape ? 14 : 17,
+                  color: theme.accentPrimary,
+                ),
               ),
-              const SizedBox(width: 5),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: isLandscape ? 10 : 11,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? theme.textPrimary : theme.textSecondary,
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Desktop App Required',
+                      style: TextStyle(
+                        fontSize: isLandscape ? 10 : 11,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textPrimary,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      'Download and run PhonePad Host on the PC or laptop where you want to use this.',
+                      style: TextStyle(
+                        fontSize: isLandscape ? 9 : 10,
+                        color: theme.textSecondary.withValues(alpha: 0.9),
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
+
+        SizedBox(height: isLandscape ? 2 : 4),
+
+        // Discovered Host List & Auto Scanning View
+        Expanded(
+          child: _buildWifiAutoContent(theme),
+        ),
+      ],
     );
   }
 
-  // --- Wi-Fi Auto Sub-Tab ---
+  // --- Wi-Fi Auto Discovered Host View ---
   Widget _buildWifiAutoContent(PhonePadThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -424,6 +390,24 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                         fontSize: 11,
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.accentPrimary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        widget.discoveryClient.sendDiscoveryProbe();
+                      },
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text(
+                        'Refresh Scan',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -490,7 +474,7 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                           ),
                           onPressed: () {
                             Navigator.pop(context);
-                            widget.onConnect(host.destination, host.name, host.pin);
+                            widget.onConnect(host.destination, host.name, 0);
                           },
                           child: Text(
                             isCurrent ? 'Active' : 'Connect',
@@ -503,107 +487,6 @@ class _ConnectionHubModalState extends State<ConnectionHubModal>
                 },
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  // --- Manual IP Sub-Tab ---
-  Widget _buildManualIpContent(PhonePadThemeData theme) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'HOST IP ADDRESS & PIN',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: theme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Enter the IP address and PIN shown on the PhonePad Host desktop window.',
-            style: TextStyle(fontSize: 11, color: theme.textSecondary.withValues(alpha: 0.8)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _ipController,
-            style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: theme.surfaceCard,
-              prefixIcon: Icon(Icons.lan_rounded, color: theme.accentPrimary, size: 20),
-              hintText: '192.168.1.15:4242',
-              hintStyle: TextStyle(color: theme.textSecondary.withValues(alpha: 0.4), fontSize: 13),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: theme.accentPrimary, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _pinController,
-            keyboardType: TextInputType.number,
-            style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: theme.surfaceCard,
-              prefixIcon: Icon(Icons.password_rounded, color: theme.accentPrimary, size: 20),
-              hintText: 'Security PIN (shown on Host)',
-              hintStyle: TextStyle(color: theme.textSecondary.withValues(alpha: 0.4), fontSize: 13),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: theme.accentPrimary, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: theme.borderSubtle),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () {
-                    _ipController.text = '127.0.0.1:4242';
-                  },
-                  child: Text('ADB Localhost', style: TextStyle(color: theme.textPrimary, fontSize: 12)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.accentPrimary,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () {
-                    final target = _ipController.text.trim();
-                    final pin = int.tryParse(_pinController.text.trim()) ?? 0;
-                    if (target.isNotEmpty) {
-                      Navigator.pop(context);
-                      widget.onConnect(target, 'Wi-Fi: $target', pin);
-                    }
-                  },
-                  child: const Text('Connect IP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

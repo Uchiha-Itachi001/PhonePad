@@ -56,6 +56,8 @@ class _TouchSurfaceState extends State<TouchSurface> {
     _detector.highResMode = true; // 8x sub-pixel streaming for buttery smooth cursor tracking
     _detector.pinchZoomEnabled = ThemeController.instance.pinchZoomEnabled;
     _detector.rotateCoordinates = _isHorizontalOrientation;
+    _detector.onEdgeScroll = _dispatchPacket;
+    _detector.onInertialScroll = _dispatchPacket;
     _status = widget.transport.status;
     _ownsGovernor = false;
     _powerGovernor = widget.powerGovernor ?? PowerGovernor.instance;
@@ -103,6 +105,7 @@ class _TouchSurfaceState extends State<TouchSurface> {
   void dispose() {
     _statusSubscription?.cancel();
     _heartbeatTimer?.cancel();
+    _detector.dispose();
     _touchNotifier.dispose();
     _powerGovernor.removeListener(_onPowerGovernorChange);
     if (_ownsGovernor) {
@@ -487,25 +490,26 @@ class _TouchSurfaceState extends State<TouchSurface> {
   Widget _buildTrackpadDigitizer(PhonePadThemeData theme) {
     final density = ThemeController.instance.dotDensity;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.isDark ? Colors.black : theme.backgroundSecondary,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Stack(
-          children: [
-            Positioned.fill(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _detector.surfaceSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.isDark ? Colors.black : theme.backgroundSecondary,
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              children: [
+                Positioned.fill(
               child: Listener(
                 behavior: HitTestBehavior.opaque,
                 onPointerDown: (event) {
                   _powerGovernor.recordActivity();
-                  HapticFeedback.selectionClick();
                   final packet = _detector.onPointerDown(event);
                   _dispatchPacket(packet);
                   _touchNotifier.value++;
-                  setState(() {});
                 },
                 onPointerMove: (event) {
                   _powerGovernor.recordActivity();
@@ -518,14 +522,12 @@ class _TouchSurfaceState extends State<TouchSurface> {
                   final packet = _detector.onPointerUp(event);
                   _dispatchPacket(packet);
                   _touchNotifier.value++;
-                  setState(() {});
                 },
                 onPointerCancel: (event) {
                   _powerGovernor.recordActivity();
                   final packet = _detector.onPointerCancel(event);
                   _dispatchPacket(packet);
                   _touchNotifier.value++;
-                  setState(() {});
                 },
                 child: CustomPaint(
                   painter: SamsungDotMatrixPainter(
@@ -539,11 +541,16 @@ class _TouchSurfaceState extends State<TouchSurface> {
                   ),
                   child: Stack(
                     children: [
-                      // Center Helper / Connect Banner
-                      if (_detector.pointerCount == 0)
-                        Center(
-                          child: RotatedBox(
-                            quarterTurns: _isHorizontalOrientation ? 1 : 0,
+                      // Center Helper / Connect Banner (scoped repaint without widget tree rebuilds)
+                      ValueListenableBuilder<int>(
+                        valueListenable: _touchNotifier,
+                        builder: (context, _, __) {
+                          if (_detector.pointerCount > 0) {
+                            return const SizedBox.shrink();
+                          }
+                          return Center(
+                            child: RotatedBox(
+                              quarterTurns: _isHorizontalOrientation ? 1 : 0,
                             child: _status == ConnectionStatus.connected
                                 ? Column(
                                     mainAxisSize: MainAxisSize.min,
@@ -619,8 +626,10 @@ class _TouchSurfaceState extends State<TouchSurface> {
                                     ),
                                   ],
                                 ),
-                          ),
-                        ),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -629,6 +638,8 @@ class _TouchSurfaceState extends State<TouchSurface> {
           ],
         ),
       ),
+    );
+      },
     );
   }
 }

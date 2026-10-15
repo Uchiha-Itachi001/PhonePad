@@ -62,9 +62,16 @@ impl Packet {
     pub fn is_high_res(&self) -> bool {
         (self.flags & FLAG_HIGH_RES) != 0
     }
+
+    /// Bit 5: Mobile client sending discrete wheel notches (e.g. remote scroll rocker).
+    #[inline]
+    pub fn is_discrete_notch(&self) -> bool {
+        (self.flags & FLAG_DISCRETE_NOTCH) != 0
+    }
 }
 
 pub const FLAG_HIGH_RES: u8 = 0x10;
+pub const FLAG_DISCRETE_NOTCH: u8 = 0x20;
 
 #[cfg(test)]
 mod tests {

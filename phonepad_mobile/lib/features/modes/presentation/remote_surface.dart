@@ -107,11 +107,13 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     ));
   }
 
-  void _triggerScroll(int delta) {
-    _showFeedback(delta > 0 ? 'SCROLL UP' : 'SCROLL DOWN');
+  void _triggerScroll(int notches) {
+    _showFeedback(notches > 0 ? 'SCROLL UP' : 'SCROLL DOWN');
     widget.transport.sendPacket(PhonePadPacket(
       opcode: Opcode.scroll,
-      dy: delta,
+      dx: 0,
+      dy: notches,
+      flags: PhonePadPacket.flagDiscreteNotch,
     ));
   }
 
@@ -831,7 +833,9 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
           Expanded(
             child: SpringBounceTap(
               key: const Key('scroll_up_btn'),
-              onHoldRepeat: () => _triggerScroll(120),
+              repeatInitialDelay: const Duration(milliseconds: 450),
+              repeatInterval: const Duration(milliseconds: 320),
+              onHoldRepeat: () => _triggerScroll(1),
               child: const Center(
                 child: Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 22),
               ),
@@ -849,7 +853,9 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
           Expanded(
             child: SpringBounceTap(
               key: const Key('scroll_down_btn'),
-              onHoldRepeat: () => _triggerScroll(-120),
+              repeatInitialDelay: const Duration(milliseconds: 450),
+              repeatInterval: const Duration(milliseconds: 320),
+              onHoldRepeat: () => _triggerScroll(-1),
               child: const Center(
                 child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 22),
               ),

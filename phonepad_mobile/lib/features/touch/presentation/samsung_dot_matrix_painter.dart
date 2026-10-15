@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../models/touch_point.dart';
@@ -14,8 +15,11 @@ class SamsungDotMatrixPainter extends CustomPainter {
   final double influenceRadius;
   final double containerBorderRadius;
 
-  List<Offset>? _cachedBorderOffsets;
-  Size? _lastSize;
+  static List<Offset>? _cachedBorderOffsets;
+  static List<Offset>? _cachedInteriorOffsets;
+  static Size? _lastSize;
+  static double? _lastSpacing;
+  static double? _lastBorderRadius;
 
   SamsungDotMatrixPainter({
     required this.activePointers,
@@ -28,57 +32,20 @@ class SamsungDotMatrixPainter extends CustomPainter {
     this.containerBorderRadius = 22.0,
   }) : theme = theme ?? PhonePadThemeData.obsidianEmerald;
 
-  List<Offset> _getBorderOffsets(
-    Size size,
-    double borderInset,
-    double cornerRadius,
-    double spacing,
-  ) {
-    if (_cachedBorderOffsets != null && _lastSize == size) {
-      return _cachedBorderOffsets!;
+  void _ensureCachedOffsets(Size size) {
+    if (_lastSize == size &&
+        _lastSpacing == dotSpacing &&
+        _lastBorderRadius == containerBorderRadius &&
+        _cachedBorderOffsets != null &&
+        _cachedInteriorOffsets != null) {
+      return;
     }
+
     _lastSize = size;
-    final offsets = <Offset>[];
-    final borderRRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        borderInset,
-        borderInset,
-        size.width - (borderInset * 2),
-        size.height - (borderInset * 2),
-      ),
-      Radius.circular(cornerRadius),
-    );
-    final path = Path()..addRRect(borderRRect);
-    for (final metric in path.computeMetrics()) {
-      final length = metric.length;
-      final numDots = (length / spacing).round();
-      if (numDots <= 0) continue;
-      final step = length / numDots;
-      for (int i = 0; i < numDots; i++) {
-        final tangent = metric.getTangentForOffset(i * step);
-        if (tangent != null) {
-          offsets.add(tangent.position);
-        }
-      }
-    }
-    _cachedBorderOffsets = offsets;
-    return offsets;
-  }
+    _lastSpacing = dotSpacing;
+    _lastBorderRadius = containerBorderRadius;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
-
-    final basePaint = Paint()
-      ..color = theme.accentPrimary.withValues(
-        alpha: theme.isDark ? 0.16 : 0.20,
-      )
-      ..style = PaintingStyle.fill;
-
-    final glowPaint = Paint()..style = PaintingStyle.fill;
-    final hasTouches = activePointers.isNotEmpty;
-
-    // 1. Draw Dotted Container Boundary (replaces solid border lines with precision dots)
+    // 1. Build Border Offsets
     const double borderInset = 2.0;
     final double innerCornerRadius =
         (containerBorderRadius - borderInset).clamp(0.0, containerBorderRadius);
@@ -92,65 +59,25 @@ class SamsungDotMatrixPainter extends CustomPainter {
       Radius.circular(innerCornerRadius),
     );
 
+    final borderOffsets = <Offset>[];
     final double borderDotSpacing = dotSpacing * 0.85;
-    final double baseBorderDotRadius = baseDotRadius * 1.1;
-    final borderOffsets = _getBorderOffsets(
-      size,
-      borderInset,
-      innerCornerRadius,
-      borderDotSpacing,
-    );
-    final borderDotPaint = Paint()..style = PaintingStyle.fill;
-
-    for (final dotCenter in borderOffsets) {
-      if (!hasTouches) {
-        // Subtler, darker border dots at rest to blend cohesively with the grid
-        borderDotPaint.color = theme.accentPrimary.withValues(
-          alpha: theme.isDark ? 0.22 : 0.28,
-        );
-        canvas.drawCircle(dotCenter, baseBorderDotRadius, borderDotPaint);
-      } else {
-        // Proximity calculation for tactile border dots
-        double maxProximity = 0.0;
-        int activeFingerCount = 1;
-
-        for (final point in activePointers.values) {
-          final dist = (dotCenter - point.current).distance;
-          if (dist < influenceRadius) {
-            final prox = 1.0 - (dist / influenceRadius);
-            if (prox > maxProximity) {
-              maxProximity = prox;
-              activeFingerCount = activePointers.length;
-            }
-          }
-        }
-
-        if (maxProximity > 0.0) {
-          final eased = maxProximity * maxProximity * (3.0 - 2.0 * maxProximity);
-          final currentRadius = baseBorderDotRadius +
-              ((maxDotRadius * 0.7) - baseBorderDotRadius) * eased;
-
-          final Color dotColor = activeFingerCount >= 3
-              ? theme.accentTertiary
-              : activeFingerCount == 2
-                  ? theme.accentSecondary
-                  : theme.accentPrimary;
-
-          borderDotPaint.color = dotColor.withValues(
-            alpha: (0.35 + (0.65 * eased)).clamp(0.0, 1.0),
-          );
-          canvas.drawCircle(dotCenter, currentRadius, borderDotPaint);
-        } else {
-          borderDotPaint.color = theme.accentPrimary.withValues(
-            alpha: theme.isDark ? 0.22 : 0.28,
-          );
-          canvas.drawCircle(dotCenter, baseBorderDotRadius, borderDotPaint);
+    final path = Path()..addRRect(borderRRect);
+    for (final metric in path.computeMetrics()) {
+      final length = metric.length;
+      final numDots = (length / borderDotSpacing).round();
+      if (numDots <= 0) continue;
+      final step = length / numDots;
+      for (int i = 0; i < numDots; i++) {
+        final tangent = metric.getTangentForOffset(i * step);
+        if (tangent != null) {
+          borderOffsets.add(tangent.position);
         }
       }
     }
+    _cachedBorderOffsets = borderOffsets;
 
-    // 2. Draw dynamic dense interior dot matrix grid
-    // Edge-to-edge symmetrical column and row distribution across full container
+    // 2. Build Interior Offsets
+    final interiorOffsets = <Offset>[];
     const double margin = 12.0;
     final double availableWidth = size.width - (margin * 2);
     final double availableHeight = size.height - (margin * 2);
@@ -166,54 +93,122 @@ class SamsungDotMatrixPainter extends CustomPainter {
         for (int r = 0; r <= rowCount; r++) {
           final double y = margin + (r * stepY);
           final dotCenter = Offset(x, y);
-
-          // Only skip points that land outside the container's rounded corner boundary
-          if (!borderRRect.contains(dotCenter)) continue;
-
-          if (!hasTouches) {
-            // Ambient state: visible, brighter micro-dots (eliminates dark void look)
-            canvas.drawCircle(dotCenter, baseDotRadius, basePaint);
-            continue;
-          }
-
-          double maxProximity = 0.0;
-          int activeFingerCount = 1;
-
-          for (final point in activePointers.values) {
-            final dist = (dotCenter - point.current).distance;
-            if (dist < influenceRadius) {
-              final prox = 1.0 - (dist / influenceRadius);
-              if (prox > maxProximity) {
-                maxProximity = prox;
-                activeFingerCount = activePointers.length;
-              }
-            }
-          }
-
-          if (maxProximity > 0.0) {
-            final eased = maxProximity * maxProximity * (3.0 - 2.0 * maxProximity);
-            final currentRadius =
-                baseDotRadius + (maxDotRadius - baseDotRadius) * eased;
-
-            final Color dotColor = activeFingerCount >= 3
-                ? theme.accentTertiary
-                : activeFingerCount == 2
-                    ? theme.accentSecondary
-                    : theme.accentPrimary;
-
-            glowPaint.color = dotColor.withValues(
-              alpha: (0.35 + (0.65 * eased)).clamp(0.0, 1.0),
-            );
-
-            canvas.drawCircle(dotCenter, currentRadius, glowPaint);
-          } else {
-            canvas.drawCircle(dotCenter, baseDotRadius, basePaint);
+          if (borderRRect.contains(dotCenter)) {
+            interiorOffsets.add(dotCenter);
           }
         }
       }
     }
+    _cachedInteriorOffsets = interiorOffsets;
+  }
 
-    // 3. Render tactile finger contact indicators directly under touch coordinates
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    _ensureCachedOffsets(size);
+
+    final borderOffsets = _cachedBorderOffsets ?? const [];
+    final interiorOffsets = _cachedInteriorOffsets ?? const [];
+    final hasTouches = activePointers.isNotEmpty;
+
+    // 1. Draw all ambient interior dots in a single hardware-accelerated drawPoints call
+    final ambientPaint = Paint()
+      ..color = theme.accentPrimary.withValues(
+        alpha: theme.isDark ? 0.16 : 0.20,
+      )
+      ..strokeWidth = baseDotRadius * 2.0
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    if (interiorOffsets.isNotEmpty) {
+      canvas.drawPoints(PointMode.points, interiorOffsets, ambientPaint);
+    }
+
+    // 2. Draw all ambient border dots in a single hardware-accelerated drawPoints call
+    final borderDotPaint = Paint()
+      ..color = theme.accentPrimary.withValues(
+        alpha: theme.isDark ? 0.22 : 0.28,
+      )
+      ..strokeWidth = (baseDotRadius * 1.1) * 2.0
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    if (borderOffsets.isNotEmpty) {
+      canvas.drawPoints(PointMode.points, borderOffsets, borderDotPaint);
+    }
+
+    // 3. If finger(s) are touching, render dynamic magnifications only for dots near the fingers
+    if (hasTouches) {
+      final glowPaint = Paint()..style = PaintingStyle.fill;
+      final touches = activePointers.values.toList();
+      final double influenceSq = influenceRadius * influenceRadius;
+      final int activeFingerCount = touches.length;
+
+      final Color dotColor = activeFingerCount >= 3
+          ? theme.accentTertiary
+          : activeFingerCount == 2
+              ? theme.accentSecondary
+              : theme.accentPrimary;
+
+      // Dynamic interior dots in proximity
+      for (final dotCenter in interiorOffsets) {
+        double minDistanceSq = double.infinity;
+        for (final point in touches) {
+          final dx = dotCenter.dx - point.current.dx;
+          final dy = dotCenter.dy - point.current.dy;
+          // Quick bounding box check before calculating square distance
+          if (dx.abs() <= influenceRadius && dy.abs() <= influenceRadius) {
+            final distSq = dx * dx + dy * dy;
+            if (distSq < minDistanceSq) {
+              minDistanceSq = distSq;
+            }
+          }
+        }
+
+        if (minDistanceSq < influenceSq) {
+          final prox = 1.0 - (minDistanceSq / influenceSq).clamp(0.0, 1.0);
+          final eased = prox * prox * (3.0 - 2.0 * prox);
+          final currentRadius = baseDotRadius + (maxDotRadius - baseDotRadius) * eased;
+
+          glowPaint.color = dotColor.withValues(
+            alpha: (0.35 + (0.65 * eased)).clamp(0.0, 1.0),
+          );
+          canvas.drawCircle(dotCenter, currentRadius, glowPaint);
+        }
+      }
+
+      // Dynamic border dots in proximity
+      final double baseBorderDotRadius = baseDotRadius * 1.1;
+      final double maxBorderDotRadius = maxDotRadius * 0.7;
+
+      for (final dotCenter in borderOffsets) {
+        double minDistanceSq = double.infinity;
+        for (final point in touches) {
+          final dx = dotCenter.dx - point.current.dx;
+          final dy = dotCenter.dy - point.current.dy;
+          if (dx.abs() <= influenceRadius && dy.abs() <= influenceRadius) {
+            final distSq = dx * dx + dy * dy;
+            if (distSq < minDistanceSq) {
+              minDistanceSq = distSq;
+            }
+          }
+        }
+
+        if (minDistanceSq < influenceSq) {
+          final prox = 1.0 - (minDistanceSq / influenceSq).clamp(0.0, 1.0);
+          final eased = prox * prox * (3.0 - 2.0 * prox);
+          final currentRadius = baseBorderDotRadius + (maxBorderDotRadius - baseBorderDotRadius) * eased;
+
+          glowPaint.color = dotColor.withValues(
+            alpha: (0.35 + (0.65 * eased)).clamp(0.0, 1.0),
+          );
+          canvas.drawCircle(dotCenter, currentRadius, glowPaint);
+        }
+      }
+    }
+
+    // 4. Render tactile finger contact indicators directly under touch coordinates
     for (final point in activePointers.values) {
       final pos = point.current;
 

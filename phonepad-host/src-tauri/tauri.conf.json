@@ -14,13 +14,18 @@
       {
         "label": "main",
         "title": "PhonePad Host",
-        "width": 380,
-        "height": 620,
+        "width": 700,
+        "height": 470,
+        "minWidth": 700,
+        "maxWidth": 700,
+        "minHeight": 470,
+        "maxHeight": 470,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": false,
         "skipTaskbar": false,
         "resizable": false,
+        "maximizable": false,
         "shadow": true,
         "visible": true
       }

@@ -21,12 +21,14 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 const WHEEL_DELTA: i32 = 120;
 
 #[derive(Default)]
-pub struct WindowsInjector;
+pub struct WindowsInjector {
+    is_zooming: bool,
+}
 
 impl WindowsInjector {
     pub fn new() -> Self {
         Self::ensure_attached_to_input_desktop();
-        Self
+        Self { is_zooming: false }
     }
 
     pub fn ensure_attached_to_input_desktop() {
@@ -188,21 +190,105 @@ impl InputInjector for WindowsInjector {
     }
 
     fn click_left(&mut self) {
-        Self::send_mouse_input(MOUSEEVENTF_LEFTDOWN, 0, 0, 0);
-        std::thread::sleep(std::time::Duration::from_millis(12));
-        Self::send_mouse_input(MOUSEEVENTF_LEFTUP, 0, 0, 0);
+        unsafe {
+            let inputs = [
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_LEFTDOWN,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_LEFTUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+            ];
+            SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+        }
     }
 
     fn click_right(&mut self) {
-        Self::send_mouse_input(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0);
-        std::thread::sleep(std::time::Duration::from_millis(12));
-        Self::send_mouse_input(MOUSEEVENTF_RIGHTUP, 0, 0, 0);
+        unsafe {
+            let inputs = [
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_RIGHTDOWN,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_RIGHTUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+            ];
+            SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+        }
     }
 
     fn click_middle(&mut self) {
-        Self::send_mouse_input(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0);
-        std::thread::sleep(std::time::Duration::from_millis(12));
-        Self::send_mouse_input(MOUSEEVENTF_MIDDLEUP, 0, 0, 0);
+        unsafe {
+            let inputs = [
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_MIDDLEDOWN,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_MIDDLEUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+            ];
+            SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+        }
     }
 
     fn scroll_raw(&mut self, dx: i32, dy: i32) {
@@ -366,7 +452,10 @@ impl InputInjector for WindowsInjector {
                     SpecialKey::F11 => VK_F11,
                     SpecialKey::F12 => VK_F12,
                     SpecialKey::CapsLock => VK_CAPITAL,
-                    SpecialKey::Win => VK_LWIN,
+                    SpecialKey::Win => {
+                        log::warn!("[SECURITY-GUARD] Blocked potentially hazardous SpecialKey::Win injection");
+                        return;
+                    }
                     SpecialKey::Ctrl => VK_CONTROL,
                     SpecialKey::Alt => VK_MENU,
                     SpecialKey::Shift => VK_SHIFT,
@@ -403,16 +492,28 @@ impl InputInjector for WindowsInjector {
 
     fn zoom(&mut self, notches: i32) {
         if notches == 0 {
+            self.zoom_finish();
             return;
         }
-        log::debug!("Injecting Zoom via Ctrl+Wheel: notches={}", notches);
-        // Hold Ctrl down
-        Self::send_key(VK_CONTROL, false);
-        // Inject wheel delta (positive = zoom in, negative = zoom out)
-        let delta = notches * WHEEL_DELTA;
+        log::debug!("Injecting High-Res Continuous Zoom: notches={}", notches);
+        // Hold Ctrl down continuously during the active pinch session
+        if !self.is_zooming {
+            self.is_zooming = true;
+            Self::send_key(VK_CONTROL, false);
+        }
+        // Smooth fractional wheel delta (30 units = 1/4 WHEEL_DELTA per notch step)
+        // Continuously streaming sub-deltas with Ctrl held delivers fluid precision touchpad
+        // optical/canvas zooming across browsers, maps, photos, and editors without chunky Ctrl++ flashes.
+        let delta = notches * 30;
         Self::send_mouse_input(MOUSEEVENTF_WHEEL, 0, 0, delta as u32);
-        // Release Ctrl
-        Self::send_key(VK_CONTROL, true);
+    }
+
+    fn zoom_finish(&mut self) {
+        if self.is_zooming {
+            log::debug!("Finishing zoom session (Ctrl key up)");
+            self.is_zooming = false;
+            Self::send_key(VK_CONTROL, true);
+        }
     }
 }
 

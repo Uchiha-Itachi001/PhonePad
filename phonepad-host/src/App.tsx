@@ -3,13 +3,14 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import { HostStatus, UpdateSettingsPayload } from "./types";
 import { tauriBridge } from "./services/tauriBridge";
+import { Sidebar, TabType } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { MasterSwitch } from "./components/MasterSwitch";
-import { PairingCard } from "./components/PairingCard";
-import { TelemetryBento } from "./components/TelemetryBento";
-import { SettingsDrawer } from "./components/SettingsDrawer";
+import { ConnectivityTab } from "./components/ConnectivityTab";
+import { SettingsTab } from "./components/SettingsTab";
+import { AboutTab } from "./components/AboutTab";
 
 export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<TabType>("connectivity");
   const [status, setStatus] = useState<HostStatus>({
     isRunning: true,
     isServiceEnabled: true,
@@ -19,7 +20,7 @@ export const App: React.FC = () => {
     computerName: "Host-PC",
     authPin: 4242,
     clientName: "Waiting for phone...",
-    clientTransport: "Wi-Fi",
+    clientTransport: "None",
     packetsPerSec: 0,
     totalPackets: 0,
     sensitivity: 1.25,
@@ -29,13 +30,22 @@ export const App: React.FC = () => {
     qrPayload: "",
   });
 
-  // Initial fetch
+  // Initial fetch and 1-second auto-sync interval
   useEffect(() => {
     tauriBridge.getHostStatus().then((initial) => {
       setStatus(initial);
     });
 
-    // Real-time telemetry subscription
+    const interval = setInterval(() => {
+      tauriBridge.getHostStatus().then((curr) => {
+        setStatus((prev) => ({
+          ...prev,
+          ...curr,
+        }));
+      });
+    }, 1000);
+
+    // Real-time telemetry event subscription
     const unsubscribe = tauriBridge.onTelemetry((event) => {
       setStatus((prev) => ({
         ...prev,
@@ -49,12 +59,12 @@ export const App: React.FC = () => {
     });
 
     return () => {
+      clearInterval(interval);
       unsubscribe();
     };
   }, []);
 
   const handleToggleService = useCallback(async () => {
-    // Optimistic update
     setStatus((prev) => ({
       ...prev,
       isServiceEnabled: !prev.isServiceEnabled,
@@ -77,61 +87,58 @@ export const App: React.FC = () => {
     []
   );
 
+  const isActuallyConnected =
+    status.isConnected ||
+    (status.isServiceEnabled &&
+      (status.packetsPerSec > 0 ||
+        (status.clientTransport !== "None" &&
+          status.clientTransport !== "" &&
+          status.clientTransport !== undefined)));
+
   return (
-    <div className="window-frame">
+    <div className="window-frame horizontal-sidebar-layout">
+      {/* Background ambient lighting */}
       <div
         className={`ambient-glow ${
-          status.isServiceEnabled ? "active" : "paused"
+          isActuallyConnected
+            ? "connected"
+            : status.isServiceEnabled
+            ? "active"
+            : "paused"
         }`}
       />
-      <Header />
 
-      <main className="content-scroll">
-        <MasterSwitch
-          isServiceEnabled={status.isServiceEnabled}
-          onToggle={handleToggleService}
-        />
+      {/* Left Sidebar Navigation */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        status={status}
+        onToggleService={handleToggleService}
+      />
 
-        <PairingCard
-          localIp={status.localIp}
-          port={status.port}
-          computerName={status.computerName}
-          authPin={status.authPin}
-          qrPayload={status.qrPayload}
-        />
+      {/* Right Main Content Pane */}
+      <div className="main-content-pane">
+        {/* Top Titlebar */}
+        <Header activeTab={activeTab} status={status} />
 
-        <TelemetryBento
-          packetsPerSec={status.packetsPerSec}
-          totalPackets={status.totalPackets}
-          isConnected={status.isConnected}
-          clientName={status.clientName}
-          clientTransport={status.clientTransport}
-        />
-
-        <SettingsDrawer
-          sensitivity={status.sensitivity}
-          naturalScroll={status.naturalScroll}
-          gesturesEnabled={status.gesturesEnabled}
-          tapToClick={status.tapToClick}
-          onUpdate={handleUpdateSettings}
-        />
-      </main>
-
-      <footer className="app-footer">
-        <div className="client-status-pill">
-          <div
-            className={`status-dot ${
-              status.isConnected ? "connected" : "disconnected"
-            }`}
-          />
-          <span>
-            {status.isConnected
-              ? `Connected: ${status.clientName}`
-              : "Waiting for PhonePad connection..."}
-          </span>
-        </div>
-        <span>120Hz Fastpath</span>
-      </footer>
+        {/* Tab Viewport */}
+        <main className="content-container">
+          {activeTab === "connectivity" && (
+            <ConnectivityTab
+              status={status}
+              onToggleService={handleToggleService}
+            />
+          )}
+          {activeTab === "settings" && (
+            <SettingsTab
+              status={status}
+              onUpdateSettings={handleUpdateSettings}
+              onToggleService={handleToggleService}
+            />
+          )}
+          {activeTab === "about" && <AboutTab />}
+        </main>
+      </div>
     </div>
   );
 };

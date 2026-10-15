@@ -6,6 +6,7 @@ class PhonePadPacket {
   static const int flagTouchActive = 0x01;
   static const int flagHaptic = 0x08;
   static const int flagHighRes = 0x10;
+  static const int flagDiscreteNotch = 0x20;
 
   final int opcode;
   final int dx;
@@ -60,4 +61,7 @@ class PhonePadPacket {
 
   /// Bit 4: High-resolution 8x sub-pixel delta encoding (Q3 fixed point).
   bool get isHighRes => (flags & flagHighRes) != 0;
+
+  /// Bit 5: Mobile client sending discrete wheel notches (e.g. remote scroll rocker).
+  bool get isDiscreteNotch => (flags & flagDiscreteNotch) != 0;
 }

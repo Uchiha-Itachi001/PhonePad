@@ -136,6 +136,11 @@ fn hide_window(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
+fn start_drag(window: tauri::WebviewWindow) {
+    let _ = window.start_dragging();
+}
+
+#[tauri::command]
 fn exit_app(app_handle: tauri::AppHandle) {
     app_handle.exit(0);
 }
@@ -172,13 +177,9 @@ pub fn run() {
     let local_ip = get_local_ip();
     let computer_name = get_computer_name();
 
-    let entropy = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(42424242);
-    let auth_pin = ((entropy % 9000) + 1000) as u32;
+    let auth_pin: u32 = 0;
 
-    log::info!("Host IP: {}:{}, Host Name: {}, Pairing PIN: {:04}", local_ip, port, computer_name, auth_pin);
+    log::info!("Host IP: {}:{}, Host Name: {}, Mode: Same Wi-Fi Auto-Discovery", local_ip, port, computer_name);
 
     let state = Arc::new(HostState::new(local_ip, port, computer_name, auth_pin));
 
@@ -226,6 +227,7 @@ pub fn run() {
             get_pairing_qr_payload,
             minimize_window,
             hide_window,
+            start_drag,
             exit_app,
         ])
         .setup(|app| {
@@ -275,6 +277,12 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Lock main window dimensions: non-resizable and non-maximizable
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_resizable(false);
+                let _ = window.set_maximizable(false);
+            }
 
             // Background telemetry emitter (10 Hz = 100ms interval)
             let state_clone = app.state::<Arc<HostState>>().inner().clone();

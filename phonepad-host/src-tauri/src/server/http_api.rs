@@ -37,13 +37,49 @@ pub async fn run_http_api(state: Arc<HostState>, port: u16) -> Result<(), Box<dy
             let method = parts[0];
             let path = parts[1];
 
-            // Permissive CORS headers for local desktop client
-            let cors_headers = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n";
+            // 1. Strict Origin Validation: Block malicious web pages from accessing local daemon
+            let origin_header = req_str.lines().find_map(|l| {
+                let trimmed = l.trim();
+                if trimmed.to_ascii_lowercase().starts_with("origin:") {
+                    Some(trimmed[7..].trim())
+                } else {
+                    None
+                }
+            });
+
+            if !crate::server::is_trusted_http_origin(origin_header) {
+                log::warn!("🚨 HTTP DEFENSE: Blocked cross-origin request from untrusted origin: {:?}", origin_header);
+                let forbidden_resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: 22\r\n\r\n403 Forbidden: Origin";
+                let _ = socket.write_all(forbidden_resp.as_bytes()).await;
+                return;
+            }
+
+            // Scoped CORS headers reflecting trusted origin only
+            let allowed_origin = origin_header.unwrap_or("http://localhost:1420");
+            let cors_headers = format!(
+                "Access-Control-Allow-Origin: {}\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-PhonePad-Client\r\n",
+                allowed_origin
+            );
 
             if method == "OPTIONS" {
                 let response = format!("HTTP/1.1 204 No Content\r\n{}\r\n", cors_headers);
                 let _ = socket.write_all(response.as_bytes()).await;
                 return;
+            }
+
+            // 2. Anti-CSRF Guard on State-Mutating POST endpoints
+            if method == "POST" {
+                let has_client_header = req_str.lines().any(|l| {
+                    l.trim().to_ascii_lowercase().starts_with("x-phonepad-client:")
+                });
+                let is_trusted_browser = origin_header.map(|o| o.contains("1420") || o.contains("tauri")).unwrap_or(false);
+
+                if !has_client_header && !is_trusted_browser {
+                    log::warn!("🚨 HTTP CSRF DEFENSE: Blocked unverified POST request to {}", path);
+                    let csrf_resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: 18\r\n\r\n403 CSRF Protected";
+                    let _ = socket.write_all(csrf_resp.as_bytes()).await;
+                    return;
+                }
             }
 
             if method == "GET" && (path == "/api/status" || path == "/status") {

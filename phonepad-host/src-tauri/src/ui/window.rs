@@ -296,7 +296,7 @@ pub mod win32_window {
         // Header
         let font_h = create_font(11, true);
         let old_f = SelectObject(hdc, font_h);
-        SetTextColor(hdc, 0x81B910); // Emerald #10b981
+        SetTextColor(hdc, 0xF6823B); // Electric Blue #3b82f6
         let mut hdr_rect = RECT { left: x1 + 16, top: y1 + 12, right: x2 - 16, bottom: y1 + 30 };
         let hdr_text = encode_wide(header);
         DrawTextW(hdc, hdr_text.as_ptr(), -1, &mut hdr_rect, DT_LEFT | DT_SINGLELINE);

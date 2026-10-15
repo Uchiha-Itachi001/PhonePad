@@ -23,6 +23,34 @@
         user-select: none;
       }
     </style>
+    <script>
+      // Intercept and halt double-click / multi-click to prevent OS or webview maximize triggers
+      document.addEventListener(
+        "mousedown",
+        function (e) {
+          if (e.detail > 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === "function") {
+              e.stopImmediatePropagation();
+            }
+          }
+        },
+        { capture: true, passive: false }
+      );
+
+      document.addEventListener(
+        "dblclick",
+        function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === "function") {
+            e.stopImmediatePropagation();
+          }
+        },
+        { capture: true, passive: false }
+      );
+    </script>
   </head>
 
   <body>

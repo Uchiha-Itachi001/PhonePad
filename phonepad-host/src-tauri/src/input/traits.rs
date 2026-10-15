@@ -296,8 +296,11 @@ pub trait InputInjector: Send + Sync {
     /// Injects a virtual keyboard event (Unicode character, special key, or shortcut).
     fn send_keyboard_event(&mut self, event_type: u8, code: u16);
 
-    /// Injects zoom in / zoom out (positive notches = zoom in via Ctrl+Wheel, negative = zoom out).
+    /// Injects continuous high-resolution zoom increments.
     fn zoom(&mut self, notches: i32);
+
+    /// Finishes active zoom session (releases Ctrl modifier).
+    fn zoom_finish(&mut self) {}
 }
 
 impl InputInjector for Box<dyn InputInjector> {
@@ -383,5 +386,9 @@ impl InputInjector for Box<dyn InputInjector> {
 
     fn zoom(&mut self, notches: i32) {
         (**self).zoom(notches);
+    }
+
+    fn zoom_finish(&mut self) {
+        (**self).zoom_finish();
     }
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import '../protocol/handshake.dart';
 import '../protocol/opcode.dart';
 import '../protocol/packet.dart';
@@ -60,8 +59,6 @@ class TcpTransport implements ITransport {
     activePin = pin;
   }
 
-  final Uint8List _packetBuffer = Uint8List(PhonePadPacket.packetSize);
-
   @override
   Future<void> connect(String destination) async {
     _isManualDisconnect = false;
@@ -101,7 +98,6 @@ class TcpTransport implements ITransport {
         authPin: activePin,
       );
       _socket!.add(handshake.toBytes());
-      _socket!.flush().catchError((_) {});
 
       _reconnectAttempts = 0;
       _setStatus(ConnectionStatus.connected);
@@ -164,10 +160,7 @@ class TcpTransport implements ITransport {
   void sendPacket(PhonePadPacket packet) {
     if (_status == ConnectionStatus.connected && _socket != null) {
       try {
-        packet.writeTo(_packetBuffer);
-        _socket!.add(_packetBuffer);
-        // Flush immediately to reduce transmission latency down to wire speed
-        _socket!.flush().catchError((_) {});
+        _socket!.add(packet.toBytes());
         _lastPacketSent = DateTime.now();
       } catch (e) {
         _handleUnexpectedDrop();

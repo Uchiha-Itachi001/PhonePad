@@ -85,6 +85,12 @@ pub fn spawn_discovery_beacon(state: Arc<HostState>) {
             // 2. Active probe response (with rate-limiting to prevent UDP amplification abuse)
             match socket.recv_from(&mut buf) {
                 Ok((size, src)) => {
+                    // Security filter: Drop probes from public WAN / external addresses immediately
+                    if !crate::server::is_trusted_private_ip(&src.ip()) {
+                        log::warn!("🚨 UDP DEFENSE: Dropped probe from non-private WAN IP {}", src);
+                        continue;
+                    }
+
                     let msg = String::from_utf8_lossy(&buf[..size]);
                     if msg.trim().starts_with("PHONEPAD_DISCOVER") {
                         if probe_window_start.elapsed() >= Duration::from_secs(1) {

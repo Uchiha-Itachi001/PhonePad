@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import '../../../core/protocol/opcode.dart';
@@ -27,11 +28,25 @@ class TouchDetector {
   bool _twoFingerSwiped = false;
   bool twoFingerNavEnabled = true;
 
-  // 2-Finger Pinch to Zoom state
+  // Smart 2-Finger Parallel Scroll vs Pinch to Zoom state
   double _lastPinchSpan = 0.0;
   double _pinchSpanAccum = 0.0;
+  double _scrollConfidence = 0.0;
+  bool _isScrollingLocked = false;
   bool _isPinching = false;
   bool pinchZoomEnabled = true;
+
+  // Trackpad edge auto-scroll during drag-and-drop
+  Size surfaceSize = Size.zero;
+  void Function(PhonePadPacket packet)? onEdgeScroll;
+  Timer? _edgeScrollTimer;
+
+  // Two-finger kinetic inertial scrolling
+  void Function(PhonePadPacket packet)? onInertialScroll;
+  Timer? _scrollInertiaTimer;
+  double _recentScrollVx = 0.0;
+  double _recentScrollVy = 0.0;
+  DateTime? _lastScrollTime;
 
   // 90-degree coordinate rotation for simulated horizontal mode
   bool rotateCoordinates = false;
@@ -42,6 +57,7 @@ class TouchDetector {
 
   /// Handles finger down event.
   PhonePadPacket? onPointerDown(PointerDownEvent event) {
+    _stopScrollInertia();
     if (_activePointers.isEmpty) {
       _subPixelDx = 0.0;
       _subPixelDy = 0.0;
@@ -50,7 +66,10 @@ class TouchDetector {
       _maxPointersInSession = 0;
       _twoFingerTapHandled = false;
       _pinchSpanAccum = 0.0;
+      _scrollConfidence = 0.0;
+      _isScrollingLocked = false;
       _isPinching = false;
+      _stopEdgeScroll();
     }
 
     // Check if this finger-down is part of a double-tap-and-hold (Drag Lock)
@@ -89,6 +108,8 @@ class TouchDetector {
       _twoFingerAccumY = 0.0;
       _twoFingerSwiped = false;
       _pinchSpanAccum = 0.0;
+      _scrollConfidence = 0.0;
+      _isScrollingLocked = false;
       _isPinching = false;
       final pts = _activePointers.values.toList();
       _lastPinchSpan = (pts[0].current - pts[1].current).distance;
@@ -143,6 +164,10 @@ class TouchDetector {
 
       if (sendDx == 0 && sendDy == 0) return null;
 
+      if (_isDragLocked) {
+        _checkEdgeScroll(event.localPosition);
+      }
+
       if (_isDragLocked && !_dragStartDispatched) {
         _dragStartDispatched = true;
         // On first movement, return DragStart with move deltas!
@@ -176,11 +201,12 @@ class TouchDetector {
       }
 
       // 1. Detect deliberate 2-finger horizontal swipe for Browser Back / Forward
-      if (twoFingerNavEnabled && !_twoFingerSwiped && !_isPinching) {
+      // Requires horizontal dominance (2.2x Y) and blocked if scrolling already active
+      if (twoFingerNavEnabled && !_twoFingerSwiped && !_isPinching && !_isScrollingLocked) {
         final absX = _twoFingerAccumX.abs();
         final absY = _twoFingerAccumY.abs();
 
-        if (absX >= 36.0 && absX >= absY * 1.5) {
+        if (absX >= 36.0 && absX >= absY * 2.2) {
           _twoFingerSwiped = true;
           HapticFeedback.mediumImpact();
           if (_twoFingerAccumX > 0) {
@@ -204,48 +230,80 @@ class TouchDetector {
         return null;
       }
 
-      // 2. Pinch to Zoom (squeeze / shrink vs spread)
+      // 2. Smart Parallel Scroll vs Pinch-to-Zoom disambiguation
       final currentSpan = (p1.current - p2.current).distance;
-      if (_lastPinchSpan > 0) {
-        final deltaSpan = currentSpan - _lastPinchSpan;
-        if (pinchZoomEnabled) {
+      final deltaSpan = (_lastPinchSpan > 0) ? (currentSpan - _lastPinchSpan) : 0.0;
+      final moveDist = delta.distance;
+      final spanDist = deltaSpan.abs();
+
+      if (moveDist > 0) {
+        if (spanDist < moveDist * 0.65) {
+          // Parallel motion dominates -> build scroll confidence and decay pinch accumulator
+          _scrollConfidence += moveDist;
+          _pinchSpanAccum *= 0.5; // Rapid decay of finger separation tremor during scroll
+          if (_scrollConfidence >= 6.0) {
+            _isScrollingLocked = true;
+          }
+        } else if (spanDist >= moveDist * 0.7 && !_isScrollingLocked) {
+          // Pinch motion dominates -> accumulate span change
           _pinchSpanAccum += deltaSpan;
+          _scrollConfidence = 0.0;
+        }
+      }
 
-          const pinchThreshold = 14.0;
-          if (_pinchSpanAccum >= pinchThreshold) {
-            _pinchSpanAccum -= pinchThreshold;
-            _isPinching = true;
-            HapticFeedback.selectionClick();
-            _lastPinchSpan = currentSpan;
-            return PhonePadPacket(
-              opcode: Opcode.zoom,
-              dx: 0,
-              dy: 1, // Zoom In (spread/expand)
-              flags: flags,
-            );
-          } else if (_pinchSpanAccum <= -pinchThreshold) {
-            _pinchSpanAccum += pinchThreshold;
-            _isPinching = true;
-            HapticFeedback.selectionClick();
-            _lastPinchSpan = currentSpan;
-            return PhonePadPacket(
-              opcode: Opcode.zoom,
-              dx: 0,
-              dy: -1, // Zoom Out (squeeze/shrink)
-              flags: flags,
-            );
-          }
+      // 3. Pinch to Zoom (only if not locked into parallel scroll)
+      if (pinchZoomEnabled && !_isScrollingLocked) {
+        const pinchThreshold = 16.0;
+        if (_pinchSpanAccum >= pinchThreshold) {
+          final steps = (_pinchSpanAccum / pinchThreshold).floor();
+          _pinchSpanAccum -= steps * pinchThreshold;
+          _isPinching = true;
+          _lastPinchSpan = currentSpan;
+          HapticFeedback.selectionClick();
+          return PhonePadPacket(
+            opcode: Opcode.zoom,
+            dx: 0,
+            dy: steps, // Zoom In (spread/expand)
+            flags: flags,
+          );
+        } else if (_pinchSpanAccum <= -pinchThreshold) {
+          final steps = (_pinchSpanAccum.abs() / pinchThreshold).floor();
+          _pinchSpanAccum += steps * pinchThreshold;
+          _isPinching = true;
+          _lastPinchSpan = currentSpan;
+          HapticFeedback.selectionClick();
+          return PhonePadPacket(
+            opcode: Opcode.zoom,
+            dx: 0,
+            dy: -steps, // Zoom Out (squeeze/shrink)
+            flags: flags,
+          );
+        }
 
-          // If actively pinching, suppress scrolling
-          if (_isPinching) {
-            _lastPinchSpan = currentSpan;
-            return null;
-          }
+        // If actively pinching, suppress scrolling
+        if (_isPinching) {
+          _lastPinchSpan = currentSpan;
+          return null;
         }
       }
       _lastPinchSpan = currentSpan;
 
-      // 2-Finger smooth scroll
+      // 2-Finger smooth scroll with velocity tracking for kinetic inertia
+      final now = DateTime.now();
+      if (_lastScrollTime != null) {
+        final dtMs = now.difference(_lastScrollTime!).inMilliseconds;
+        if (dtMs > 0 && dtMs <= 80) {
+          final instantVx = (delta.dx / dtMs) * 1000.0;
+          final instantVy = (delta.dy / dtMs) * 1000.0;
+          _recentScrollVx = _recentScrollVx * 0.35 + instantVx * 0.65;
+          _recentScrollVy = _recentScrollVy * 0.35 + instantVy * 0.65;
+        } else {
+          _recentScrollVx = 0.0;
+          _recentScrollVy = 0.0;
+        }
+      }
+      _lastScrollTime = now;
+
       int scrollDx = 0;
       int scrollDy = 0;
       int scrollFlags = flags;
@@ -305,6 +363,7 @@ class TouchDetector {
 
   /// Handles finger lift event and classifies quick taps & drag releases.
   PhonePadPacket? onPointerUp(PointerUpEvent event) {
+    _stopEdgeScroll();
     final point = _activePointers.remove(event.pointer);
     PhonePadPacket? result;
 
@@ -368,15 +427,37 @@ class TouchDetector {
       }
     }
 
+    final wasPinching = _isPinching;
+    final wasScrolling = _isScrollingLocked;
+    final releaseVx = _recentScrollVx;
+    final releaseVy = _recentScrollVy;
+
     if (_activePointers.length < 2) {
       _twoFingerAccumX = 0.0;
       _twoFingerAccumY = 0.0;
       _twoFingerSwiped = false;
       _lastPinchSpan = 0.0;
       _pinchSpanAccum = 0.0;
+      _scrollConfidence = 0.0;
+      _isScrollingLocked = false;
       _isPinching = false;
       _scrollSubPixelDx = 0.0;
       _scrollSubPixelDy = 0.0;
+      _lastScrollTime = null;
+
+      // Launch kinetic inertial scroll coasting if released with flick velocity
+      if (wasScrolling && !wasPinching && (releaseVx.abs() >= 140.0 || releaseVy.abs() >= 140.0)) {
+        _startScrollInertia(releaseVx, releaseVy);
+      }
+
+      if (wasPinching && result == null) {
+        result = const PhonePadPacket(
+          opcode: Opcode.zoom,
+          dx: 0,
+          dy: 0,
+          flags: 0x00,
+        );
+      }
     }
 
     // If all fingers lifted, transmit lift packet to reset host accumulators
@@ -389,6 +470,8 @@ class TouchDetector {
       _twoFingerTapHandled = false;
       _lastPinchSpan = 0.0;
       _pinchSpanAccum = 0.0;
+      _scrollConfidence = 0.0;
+      _isScrollingLocked = false;
       _isPinching = false;
       result ??= const PhonePadPacket(
         opcode: Opcode.move,
@@ -403,6 +486,9 @@ class TouchDetector {
 
   /// Handles cancel (system interrupt, palm rejection).
   PhonePadPacket? onPointerCancel(PointerCancelEvent event) {
+    _stopEdgeScroll();
+    _stopScrollInertia();
+    final wasPinching = _isPinching;
     _isDragLocked = false;
     _dragStartDispatched = false;
     _lastTapUpTime = null;
@@ -416,18 +502,173 @@ class TouchDetector {
     _twoFingerSwiped = false;
     _lastPinchSpan = 0.0;
     _pinchSpanAccum = 0.0;
+    _scrollConfidence = 0.0;
+    _isScrollingLocked = false;
     _isPinching = false;
     _maxPointersInSession = 0;
     _twoFingerTapHandled = false;
     _activePointers.remove(event.pointer);
     if (_activePointers.isEmpty) {
+      if (wasPinching) {
+        return const PhonePadPacket(
+          opcode: Opcode.zoom,
+          dx: 0,
+          dy: 0,
+          flags: 0x00,
+        );
+      }
       return const PhonePadPacket(
         opcode: Opcode.move,
         dx: 0,
         dy: 0,
         flags: 0x00,
       );
+    } else if (wasPinching) {
+      return const PhonePadPacket(
+        opcode: Opcode.zoom,
+        dx: 0,
+        dy: 0,
+        flags: 0x00,
+      );
     }
     return null;
+  }
+
+  /// Evaluates trackpad boundary auto-scrolling while in DragLock.
+  void _checkEdgeScroll(Offset localPos) {
+    if (!_isDragLocked || surfaceSize.width <= 100 || surfaceSize.height <= 100) {
+      _stopEdgeScroll();
+      return;
+    }
+
+    const margin = 42.0;
+    final inBottom = localPos.dy >= surfaceSize.height - margin;
+    final inTop = localPos.dy <= margin;
+    final inRight = localPos.dx >= surfaceSize.width - margin;
+    final inLeft = localPos.dx <= margin;
+
+    if (!inBottom && !inTop && !inRight && !inLeft) {
+      _stopEdgeScroll();
+      return;
+    }
+
+    // Active in edge zone -> start or maintain edge scroll ticker
+    _edgeScrollTimer ??= Timer.periodic(const Duration(milliseconds: 35), (timer) {
+      if (!_isDragLocked || _activePointers.isEmpty) {
+        _stopEdgeScroll();
+        return;
+      }
+
+      final pt = _activePointers.values.first;
+      final pos = pt.current;
+      int scrollDx = 0;
+      int scrollDy = 0;
+
+      if (pos.dy >= surfaceSize.height - margin) {
+        final depth = ((pos.dy - (surfaceSize.height - margin)) / margin).clamp(0.2, 1.0);
+        scrollDy = (depth * -22.0).round(); // Scroll down
+      } else if (pos.dy <= margin) {
+        final depth = ((margin - pos.dy) / margin).clamp(0.2, 1.0);
+        scrollDy = (depth * 22.0).round(); // Scroll up
+      }
+
+      if (pos.dx >= surfaceSize.width - margin) {
+        final depth = ((pos.dx - (surfaceSize.width - margin)) / margin).clamp(0.2, 1.0);
+        scrollDx = (depth * -18.0).round(); // Scroll right
+      } else if (pos.dx <= margin) {
+        final depth = ((margin - pos.dx) / margin).clamp(0.2, 1.0);
+        scrollDx = (depth * 18.0).round(); // Scroll left
+      }
+
+      if (rotateCoordinates) {
+        final temp = scrollDx;
+        scrollDx = scrollDy;
+        scrollDy = -temp;
+      }
+
+      if (scrollDx != 0 || scrollDy != 0) {
+        final packet = PhonePadPacket(
+          opcode: Opcode.scroll,
+          dx: scrollDx,
+          dy: scrollDy,
+          flags: 0x01 | (1 << 1) | PhonePadPacket.flagHighRes,
+        );
+        onEdgeScroll?.call(packet);
+      }
+    });
+  }
+
+  void _startScrollInertia(double initialVx, double initialVy) {
+    _scrollInertiaTimer?.cancel();
+    double vx = initialVx.clamp(-2500.0, 2500.0);
+    double vy = initialVy.clamp(-2500.0, 2500.0);
+
+    _scrollInertiaTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      // Natural kinetic friction decay (~0.92 per frame -> smooth coasting for ~350-450ms)
+      vx *= 0.92;
+      vy *= 0.92;
+
+      if (vx.abs() < 10.0 && vy.abs() < 10.0) {
+        _stopScrollInertia();
+        return;
+      }
+
+      final tickDx = vx * 0.016;
+      final tickDy = vy * 0.016;
+
+      int sendDx = 0;
+      int sendDy = 0;
+      int packetFlags = 0x01 | (2 << 1);
+
+      if (highResMode) {
+        final rawDx = tickDx * 8.0 + _scrollSubPixelDx;
+        final rawDy = tickDy * 8.0 + _scrollSubPixelDy;
+        sendDx = rawDx.round();
+        sendDy = rawDy.round();
+        _scrollSubPixelDx = rawDx - sendDx;
+        _scrollSubPixelDy = rawDy - sendDy;
+        packetFlags |= PhonePadPacket.flagHighRes;
+      } else {
+        _scrollSubPixelDx += tickDx;
+        _scrollSubPixelDy += tickDy;
+        if (_scrollSubPixelDx.abs() >= 0.5) {
+          sendDx = _scrollSubPixelDx.round();
+          _scrollSubPixelDx -= sendDx;
+        }
+        if (_scrollSubPixelDy.abs() >= 0.5) {
+          sendDy = _scrollSubPixelDy.round();
+          _scrollSubPixelDy -= sendDy;
+        }
+      }
+
+      if (sendDx != 0 || sendDy != 0) {
+        final packet = PhonePadPacket(
+          opcode: Opcode.scroll,
+          dx: sendDx,
+          dy: sendDy,
+          flags: packetFlags,
+        );
+        onInertialScroll?.call(packet);
+        onEdgeScroll?.call(packet);
+      }
+    });
+  }
+
+  void _stopScrollInertia() {
+    _scrollInertiaTimer?.cancel();
+    _scrollInertiaTimer = null;
+    _recentScrollVx = 0.0;
+    _recentScrollVy = 0.0;
+    _lastScrollTime = null;
+  }
+
+  void _stopEdgeScroll() {
+    _edgeScrollTimer?.cancel();
+    _edgeScrollTimer = null;
+  }
+
+  void dispose() {
+    _stopEdgeScroll();
+    _stopScrollInertia();
   }
 }

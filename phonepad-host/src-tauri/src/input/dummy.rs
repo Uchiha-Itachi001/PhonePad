@@ -29,6 +29,8 @@ pub struct DummyInjector {
     pub media_keys: Vec<MediaKey>,
     pub keyboard_events: Vec<(u8, u16)>,
     pub zoom_notches: i32,
+    pub is_zooming: bool,
+    pub zoom_finished_count: usize,
 }
 
 impl DummyInjector {
@@ -142,6 +144,18 @@ impl InputInjector for DummyInjector {
     }
 
     fn zoom(&mut self, notches: i32) {
+        if notches == 0 {
+            self.zoom_finish();
+            return;
+        }
+        self.is_zooming = true;
         self.zoom_notches += notches;
+    }
+
+    fn zoom_finish(&mut self) {
+        if self.is_zooming {
+            self.is_zooming = false;
+            self.zoom_finished_count += 1;
+        }
     }
 }

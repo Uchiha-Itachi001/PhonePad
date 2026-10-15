@@ -13,7 +13,7 @@ pub struct FilterConfig {
 impl Default for FilterConfig {
     fn default() -> Self {
         Self {
-            deadzone_threshold: 0.4,
+            deadzone_threshold: 0.04,
             scroll_units_per_notch: 16.0,
             natural_scroll: true,
         }
@@ -48,14 +48,19 @@ impl GestureFilter {
         }
     }
 
-    /// Suppresses floating-point micro-jitter when finger is nearly stationary.
+    /// Suppresses floating-point micro-jitter when finger is nearly stationary with smooth Hermite transition.
     #[inline]
     pub fn apply_deadzone_f32(&self, fx: f32, fy: f32) -> (f32, f32) {
         let mag = (fx * fx + fy * fy).sqrt();
         if mag < self.config.deadzone_threshold {
             (0.0, 0.0)
-        } else {
+        } else if mag >= 0.5 {
             (fx, fy)
+        } else {
+            // Smooth cubic Hermite curve between deadzone_threshold and 0.5
+            let t = (mag - self.config.deadzone_threshold) / (0.5 - self.config.deadzone_threshold);
+            let factor = t * t * (3.0 - 2.0 * t);
+            (fx * factor, fy * factor)
         }
     }
 
@@ -143,7 +148,7 @@ mod tests {
     #[test]
     fn test_deadzone_f32() {
         let filter = GestureFilter::default();
-        assert_eq!(filter.apply_deadzone_f32(0.1, 0.2), (0.0, 0.0));
+        assert_eq!(filter.apply_deadzone_f32(0.02, 0.03), (0.0, 0.0));
         assert_eq!(filter.apply_deadzone_f32(1.0, 0.0), (1.0, 0.0));
     }
 
@@ -159,4 +164,3 @@ mod tests {
         assert_eq!((wx2, wy2), (0, 7));
     }
 }
-

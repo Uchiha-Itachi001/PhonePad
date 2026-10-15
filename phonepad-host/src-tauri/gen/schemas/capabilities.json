@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default permissions for PhonePad Host","local":true,"windows":["main"],"permissions":["core:default","core:window:default","core:window:allow-start-dragging","core:event:default"]}}

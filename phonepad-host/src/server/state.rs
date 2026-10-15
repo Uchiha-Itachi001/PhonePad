@@ -85,25 +85,20 @@ impl HostState {
         self.packets_per_sec.store(0, Ordering::Relaxed);
     }
 
-    /// Records an incoming packet and updates rate metrics
-    pub fn record_packet(&self, dx: f32, dy: f32) {
+    /// Records an incoming packet and updates rate metrics without mutex contention
+    pub fn record_packet(&self, _dx: f32, _dy: f32) {
         self.packets_total.fetch_add(1, Ordering::Relaxed);
-        self.second_packet_counter.fetch_add(1, Ordering::Relaxed);
+        let count = self.second_packet_counter.fetch_add(1, Ordering::Relaxed);
 
-        if let Ok(mut x) = self.last_delta_x.lock() {
-            *x = dx;
-        }
-        if let Ok(mut y) = self.last_delta_y.lock() {
-            *y = dy;
-        }
-
-        // Check if 1 second elapsed to update PPS
-        if let Ok(mut last_time) = self.last_second_time.lock() {
-            let elapsed = last_time.elapsed();
-            if elapsed.as_millis() >= 1000 {
-                let pps = self.second_packet_counter.swap(0, Ordering::Relaxed);
-                self.packets_per_sec.store(pps, Ordering::Relaxed);
-                *last_time = Instant::now();
+        // Check if 1 second elapsed to update PPS (sampled every 32 packets to avoid mutex lock thrashing)
+        if count & 31 == 0 {
+            if let Ok(mut last_time) = self.last_second_time.try_lock() {
+                let elapsed = last_time.elapsed();
+                if elapsed.as_millis() >= 1000 {
+                    let pps = self.second_packet_counter.swap(0, Ordering::Relaxed);
+                    self.packets_per_sec.store(pps, Ordering::Relaxed);
+                    *last_time = Instant::now();
+                }
             }
         }
     }

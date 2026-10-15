@@ -39,7 +39,7 @@ export const PairingCard: React.FC<PairingCardProps> = ({
           onClick={copyIp}
           title="Copy IP:Port to clipboard"
         >
-          {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+          {copied ? <Check size={12} color="#3b82f6" /> : <Copy size={12} />}
           <span>{copied ? "Copied" : "Copy IP"}</span>
         </button>
       </div>
@@ -59,7 +59,7 @@ export const PairingCard: React.FC<PairingCardProps> = ({
           <div className="meta-row">
             <span className="meta-label">Local Wi-Fi IP</span>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Wifi size={12} color="#10b981" />
+              <Wifi size={12} color="#3b82f6" />
               <span className="meta-value">
                 {localIp}:{port}
               </span>
